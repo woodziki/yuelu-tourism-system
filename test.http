@@ -1,0 +1,43 @@
+### 测试注册新用户
+POST http://localhost:8080/user/register
+Content-Type: application/json
+
+{
+  "username": "test01",
+  "password": "123456",
+  "nickname": "第一个测试游客"
+}
+
+
+
+### 测试用户登录
+POST http://localhost:8080/user/login
+Content-Type: application/json
+
+{
+  "username": "test01",
+  "password": "123456"
+}
+
+
+
+### 测试添加收藏（携带 Token 验证）
+POST http://localhost:8080/favorite/add?spotId=1
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzIzNDcwMjAsInVzZXJJZCI6MSwidXNlcm5hbWUiOiJ0ZXN0MDEifQ.qKGatuQs37JtptBvDvbnp3ern36L8ldg_RPfMyFqMP0
+
+
+
+
+### 测试发表评论
+POST http://localhost:8080/comment/add
+Content-Type: application/json
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzIzNDcwMjAsInVzZXJJZCI6MSwidXNlcm5hbWUiOiJ0ZXN0MDEifQ.qKGatuQs37JtptBvDvbnp3ern36L8ldg_RPfMyFqMP0
+
+{
+  "uerId": 1,
+  "spotId": 1,
+  "content": "岳麓书院的古建筑非常有底蕴，强烈推荐！",
+  "star": 5
+}
+
+
