@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/yuelu_tourism?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+
+mybatis-plus:
+  configuration:
+    # 控制台打印 SQL，便于新手调试（后续上线可关闭）
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# JWT 配置（登录成功后签发 Token 用）
+jwt:
+  secret: yuelu-tourism-jwt-secret-key-32bytes!!
+  expire-hours: 72
+
