@@ -21,23 +21,27 @@ Content-Type: application/json
 
 
 
-### 测试添加收藏（携带 Token 验证）
-POST http://localhost:8080/favorite/add?spotId=1
-Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzIzNDcwMjAsInVzZXJJZCI6MSwidXNlcm5hbWUiOiJ0ZXN0MDEifQ.qKGatuQs37JtptBvDvbnp3ern36L8ldg_RPfMyFqMP0
+#### 测试添加收藏（携带 Token 验证）
+#POST http://localhost:8080/favorite/add?spotId=1
+#Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzIzNDcwMjAsInVzZXJJZCI6MSwidXNlcm5hbWUiOiJ0ZXN0MDEifQ.qKGatuQs37JtptBvDvbnp3ern36L8ldg_RPfMyFqMP0
+#
+#
 
 
+#
+#### 测试发表评论
+#POST http://localhost:8080/comment/add
+#Content-Type: application/json
+#Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzIzNDcwMjAsInVzZXJJZCI6MSwidXNlcm5hbWUiOiJ0ZXN0MDEifQ.qKGatuQs37JtptBvDvbnp3ern36L8ldg_RPfMyFqMP0
+#
+#{
+#  "uerId": 1,
+#  "spotId": 1,
+#  "content": "岳麓书院的古建筑非常有底蕴，强烈推荐！",
+#  "star": 5
+#}
 
 
-### 测试发表评论
-POST http://localhost:8080/comment/add
-Content-Type: application/json
-Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzIzNDcwMjAsInVzZXJJZCI6MSwidXNlcm5hbWUiOiJ0ZXN0MDEifQ.qKGatuQs37JtptBvDvbnp3ern36L8ldg_RPfMyFqMP0
-
-{
-  "uerId": 1,
-  "spotId": 1,
-  "content": "岳麓书院的古建筑非常有底蕴，强烈推荐！",
-  "star": 5
-}
-
-
+###  测试基于用户的协同过滤推荐
+GET http://localhost:8080/spot/recommend
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzI4MDg2MTgsInVzZXJJZCI6MSwidXNlcm5hbWUiOiJ0ZXN0MDEifQ.jt0TdNC6diHPavWWmlHboL7zxuiQEw4IK1X01TGE9YI

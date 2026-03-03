@@ -6,7 +6,7 @@
 - **前端**：Vue 2、Element UI、Axios（后续步骤实现）
 - **算法**：纯 Java 手写实现（PRD 指定 User-based CF，后续步骤实现）
 
-## 当前进度（Step 3）
+## 当前进度（Step 5）
 
 - **已完成**
   - ✅ Step 1：后端基础工程初始化（`backend`，Spring Boot + Maven）
@@ -21,6 +21,18 @@
   - ✅ Step 3：用户认证（注册/登录，密码 BCrypt 加密，登录返回 JWT）
   - ✅ Step 3：JWT 拦截器（JwtInterceptor）+ WebMvcConfig 白名单（/user/login、/user/register、/spot/**、/route/**）
   - ✅ Step 3：全局异常处理（GlobalExceptionHandler，AuthException 返回「请先登录」）
+  - ✅ Step 4：互动模块（收藏 Favorite 与评论 Comment）
+    - 收藏接口：添加收藏、取消收藏、分页查询“我的收藏”（`FavoriteController`）
+    - 评论接口：针对景点发表评论、分页查询景点评论列表（`CommentController`）
+    - 鉴权策略：发表评论、收藏相关接口需登录，从 JWT 中解析 userId，绝不信任前端传入的 userId
+  - ✅ Step 5：推荐算法（User-based 协同过滤）
+    - 推荐工具类：`RecommendUtils`（User-based CF，余弦相似度，纯 Java 实现）
+    - 推荐服务：`RecommendService` / `RecommendServiceImpl`
+      - 从 `t_favorite`、`t_comment` 构建用户-景点兴趣度矩阵
+      - 兴趣度公式：`Score = (W_fav * Is_fav) + (W_rate * Rating)`（其中 `W_fav = 3`，`W_rate = 1`）
+      - 调用协同过滤算法获取推荐景点 ID，再回查 `t_spot` 返回完整信息
+    - 冷启动策略：当目标用户无行为数据或无相似用户时，按 `view_count` 降序返回 Top 10 热门景点
+    - 推荐接口：`GET /spot/recommend`（需登录，从 Token 中解析当前用户 ID）
 
 ## 数据库设计（PRD 第 5 章）
 
@@ -114,6 +126,9 @@
 
 ## 下一步计划
 
-- Step 4：实现用户行为接口（收藏/评分/评论）
-- Step 5：实现推荐算法工具类 `RecommendUtils.java`（User-based CF）
+- Step 6（前端部分）：基于 Vue 2 + Element UI 实现以下页面与交互：
+  - 首页“热门景点推荐”与“猜你喜欢”模块，对接 `/spot/list` 与 `/spot/recommend` 接口
+  - 景点详情页，支持收藏、评分、评论交互，并展示推荐结果入口
+  - “我的收藏”页面，对接 `/favorite/my` 接口，支持一键跳转到景点详情
+  - 登录/注册页，对接 `/user/login` 与 `/user/register`，在 Axios 中全局携带 JWT Token
 

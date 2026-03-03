@@ -4,9 +4,15 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.entity.Spot;
+import com.yuelu.exception.AuthException;
+import com.yuelu.service.RecommendService;
 import com.yuelu.service.SpotService;
+import com.yuelu.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 
 /**
  * 景点控制器。
@@ -20,6 +26,15 @@ public class SpotController {
 
     @Autowired
     private SpotService spotService;
+
+    @Autowired
+    private RecommendService recommendService;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    private static final String HEADER_AUTHORIZATION = "Authorization";
+    private static final String PREFIX_BEARER = "Bearer ";
 
     /**
      * 分页查询景点列表。
@@ -60,5 +75,39 @@ public class SpotController {
             return Result.error("景点不存在");
         }
         return Result.success(spot);
+    }
+
+    /**
+     * 根据当前登录用户的行为数据，返回个性化推荐景点列表。
+     *
+     * <p>安全要求：
+     * 必须从请求头 Authorization 中获取 JWT Token，并通过 JwtUtil 解析出当前用户 ID，
+     * 绝不能信任前端传来的 userId 参数。</p>
+     *
+     * <p>推荐逻辑：</p>
+     * <ul>
+     *     <li>当用户有收藏/评分等行为数据时：调用 User-based CF 协同过滤算法，基于余弦相似度计算推荐结果；</li>
+     *     <li>当用户无任何行为数据时：触发冷启动策略，按 view_count 降序返回 Top 10 热门景点。</li>
+     * </ul>
+     *
+     * @param request HttpServletRequest，用于获取请求头中的 Token
+     * @return 推荐景点列表（Result<List<Spot>>）
+     */
+    @GetMapping("/recommend")
+    public Result<List<Spot>> recommend(HttpServletRequest request) {
+        String auth = request.getHeader(HEADER_AUTHORIZATION);
+        String token = null;
+        if (auth != null && auth.startsWith(PREFIX_BEARER)) {
+            token = auth.substring(PREFIX_BEARER.length()).trim();
+        }
+        Long userId = jwtUtil.getUserId(token);
+        if (userId == null) {
+            // 未登录或 Token 无效，直接抛出认证异常，由全局异常处理器返回“请先登录”
+            throw new AuthException();
+        }
+
+        // 这里 Top N 取 20，前端可以只展示前 10 或 20 条
+        List<Spot> spots = recommendService.recommendForUser(userId, 20);
+        return Result.success(spots);
     }
 }
