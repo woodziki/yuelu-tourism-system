@@ -1,18 +1,24 @@
 package com.yuelu.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.dto.CommentAddDTO;
 import com.yuelu.entity.Comment;
+import com.yuelu.entity.User;
 import com.yuelu.exception.AuthException;
+import com.yuelu.mapper.UserMapper;
 import com.yuelu.service.CommentService;
+import com.yuelu.vo.CommentVO;
 import com.yuelu.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 评论控制器。
@@ -30,6 +36,8 @@ public class CommentController {
     @Autowired
     private CommentService commentService;
 
+    @Autowired
+    private UserMapper userMapper;
     @Autowired
     private JwtUtil jwtUtil;
 
@@ -61,29 +69,60 @@ public class CommentController {
     }
 
     /**
-     * 分页查询某个景点的所有评论（按时间倒序）。
+     * 查询某个景点的所有评论列表（按时间倒序）。
      *
      * <p>本接口对所有用户开放访问权限，不需要携带 Token。</p>
      *
-     * <p>由于 PRD 中评论表仅包含 id/user_id/spot_id/content/star，
-     * 没有单独的时间字段，这里采用 id 倒序来近似表示「按时间倒序」。</p>
+     * <p>返回 CommentVO 列表，包含评价人昵称、评分、内容与时间等信息，便于前端直接展示。</p>
      *
-     * @param spotId  景点 ID（必填）
-     * @param current 当前页码（默认 1）
-     * @param size    每页大小（默认 10）
-     * @return 分页结果
+     * @param spotId 景点 ID（必填）
+     * @return 评论视图对象列表
      */
     @GetMapping("/list")
-    public Result<IPage<Comment>> listComments(
-            @RequestParam Long spotId,
-            @RequestParam(defaultValue = "1") Long current,
-            @RequestParam(defaultValue = "10") Long size) {
-        Page<Comment> page = new Page<>(current, size);
-        LambdaQueryWrapper<Comment> query = new LambdaQueryWrapper<Comment>()
+    public Result<List<CommentVO>> listComments(@RequestParam Long spotId) {
+        // 1. 查询该景点的所有评论记录，按 create_time（若为空则按 id）倒序
+        LambdaQueryWrapper<Comment> wrapper = new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getSpotId, spotId)
+                .orderByDesc(Comment::getCreateTime)
                 .orderByDesc(Comment::getId);
-        IPage<Comment> result = commentService.page(page, query);
-        return Result.success(result);
+        List<Comment> comments = commentService.list(wrapper);
+        if (comments.isEmpty()) {
+            return Result.success(new ArrayList<>());
+        }
+
+        // 2. 收集所有涉及到的用户 ID，批量查询用户信息以获取昵称
+        java.util.Set<Long> userIds = new java.util.HashSet<>();
+        for (Comment c : comments) {
+            if (c.getUserId() != null) {
+                userIds.add(c.getUserId());
+            }
+        }
+        Map<Long, User> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<User> users = userMapper.selectBatchIds(userIds);
+            for (User u : users) {
+                userMap.put(u.getId(), u);
+            }
+        }
+
+        // 3. 组装 CommentVO 列表
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        List<CommentVO> voList = new ArrayList<>();
+        for (Comment c : comments) {
+            CommentVO vo = new CommentVO();
+            vo.setId(c.getId());
+            vo.setUserId(c.getUserId());
+            vo.setSpotId(c.getSpotId());
+            vo.setContent(c.getContent());
+            vo.setStar(c.getStar());
+            User user = c.getUserId() == null ? null : userMap.get(c.getUserId());
+            vo.setNickname(user == null ? "匿名用户" : user.getNickname());
+            if (c.getCreateTime() != null) {
+                vo.setTime(c.getCreateTime().format(formatter));
+            }
+            voList.add(vo);
+        }
+        return Result.success(voList);
     }
 
     /**

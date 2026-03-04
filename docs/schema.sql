@@ -48,13 +48,13 @@ CREATE TABLE IF NOT EXISTS t_route_spot (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 5.5 行为表 (t_comment, t_favorite)
--- PRD 仅定义字段列表，这里严格按字段创建，不额外添加 create_time 等扩展字段。
 CREATE TABLE IF NOT EXISTS t_comment (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
   spot_id BIGINT NOT NULL,
   content TEXT,
-  star INT NOT NULL COMMENT 'INT 1-5'
+  star INT NOT NULL COMMENT 'INT 1-5',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS t_favorite (

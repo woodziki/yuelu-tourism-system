@@ -1,6 +1,7 @@
 package com.yuelu.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -61,5 +62,13 @@ public class Spot {
      * 平均评分（展示用）。
      */
     private Double score;
+
+    /**
+     * 景点图片链接。
+     *
+     * <p>数据库字段为 image_url，这里使用 @TableField 显式映射，避免依赖全局驼峰配置导致映射失败。</p>
+     */
+    @TableField("image_url")
+    private String imageUrl;
 }
 

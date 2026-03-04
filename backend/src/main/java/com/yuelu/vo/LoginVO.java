@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
  * <p>包含 JWT Token 和当前用户基本信息，前端将 Token 放入请求头后即可访问需登录接口。</p>
  */
 @Data
-@NoArgsConstructor
+@NoArgsConstructor 
 @AllArgsConstructor
 public class LoginVO {
 

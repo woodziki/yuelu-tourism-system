@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.entity.Favorite;
+import com.yuelu.entity.Spot;
 import com.yuelu.exception.AuthException;
 import com.yuelu.service.FavoriteService;
 import com.yuelu.util.JwtUtil;
+import com.yuelu.mapper.SpotMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +30,8 @@ public class FavoriteController {
     @Autowired
     private FavoriteService favoriteService;
 
+    @Autowired
+    private SpotMapper spotMapper;
     @Autowired
     private JwtUtil jwtUtil;
 
@@ -66,6 +70,25 @@ public class FavoriteController {
     }
 
     /**
+     * 查询当前用户是否已收藏某个景点。
+     *
+     * <p>核心安全要求：绝不信任前端传来的 userId，只从 Token 解析当前用户。</p>
+     *
+     * @param spotId  景点 ID
+     * @param request HttpServletRequest
+     * @return 是否已收藏（true/false）
+     */
+    @GetMapping("/check")
+    public Result<Boolean> checkFavorite(@RequestParam Long spotId, HttpServletRequest request) {
+        Long userId = getUserIdFromRequest(request);
+        LambdaQueryWrapper<Favorite> query = new LambdaQueryWrapper<Favorite>()
+                .eq(Favorite::getUserId, userId)
+                .eq(Favorite::getSpotId, spotId);
+        Favorite existed = favoriteService.getOne(query);
+        return Result.success(existed != null);
+    }
+
+    /**
      * 取消收藏。
      *
      * <p>同样从 Token 中解析 userId，仅删除当前登录用户对某个景点的收藏记录。</p>
@@ -83,6 +106,21 @@ public class FavoriteController {
                 .eq(Favorite::getSpotId, spotId);
         favoriteService.remove(query);
         return Result.success();
+    }
+
+    /**
+     * 删除当前用户对某个景点的收藏记录（等价于取消收藏）。
+     *
+     * <p>为了前端语义更清晰，提供 /favorite/remove 接口；内部逻辑与 /favorite/cancel 一致。</p>
+     *
+     * @param spotId  景点 ID
+     * @param request HttpServletRequest
+     * @return 操作结果
+     */
+    @PostMapping("/remove")
+    public Result<Void> removeFavorite(@RequestParam Long spotId, HttpServletRequest request) {
+        // 复用取消收藏逻辑，保持行为一致
+        return cancelFavorite(spotId, request);
     }
 
     /**
@@ -110,6 +148,43 @@ public class FavoriteController {
         return Result.success(result);
     }
 
+    /**
+     * 查询当前登录用户收藏的所有景点信息列表。
+     *
+     * <p>实现方式：</p>
+     * <ol>
+     *     <li>根据 userId 查询 t_favorite 表，拿到当前用户收藏的所有 spotId；</li>
+     *     <li>使用 SpotMapper 按主键批量查询 t_spot，得到完整的景点信息列表；</li>
+     *     <li>返回 Result<List<Spot>>，便于前端直接渲染景点卡片。</li>
+     * </ol>
+     *
+     * @param request HttpServletRequest
+     * @return 收藏景点列表
+     */
+    @GetMapping("/list")
+    public Result<java.util.List<Spot>> listFavoriteSpots(HttpServletRequest request) {
+        Long userId = getUserIdFromRequest(request);
+        // 1. 查询当前用户在收藏表中的所有记录
+        java.util.List<Favorite> favorites = favoriteService.list(
+                new LambdaQueryWrapper<Favorite>().eq(Favorite::getUserId, userId)
+        );
+        if (favorites.isEmpty()) {
+            return Result.success(java.util.Collections.emptyList());
+        }
+        // 2. 提取所有景点 ID，避免重复
+        java.util.Set<Long> spotIds = new java.util.HashSet<>();
+        for (Favorite fav : favorites) {
+            if (fav.getSpotId() != null) {
+                spotIds.add(fav.getSpotId());
+            }
+        }
+        if (spotIds.isEmpty()) {
+            return Result.success(java.util.Collections.emptyList());
+        }
+        // 3. 批量从 t_spot 查询景点详情
+        java.util.List<Spot> spots = spotMapper.selectBatchIds(spotIds);
+        return Result.success(spots);
+    }
     /**
      * 从请求头中解析出当前登录用户的 userId。
      *
