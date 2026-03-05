@@ -208,9 +208,14 @@ export default {
             window.localStorage.setItem('username', username || '')
             window.localStorage.setItem('nickname', nickname || '')
 
-            this.$message.success('登录成功，欢迎回来！')
-            // 跳转到首页（推荐页）
-            this.$router.push('/')
+            // 根据用户名区分管理员与普通游客的登录入口
+            if (this.loginForm.username === 'admin') {
+              this.$message.success('欢迎回来，超级管理员！')
+              this.$router.push('/admin')
+            } else {
+              this.$message.success('登录成功，欢迎回来！')
+              this.$router.push('/')
+            }
           })
           .catch(err => {
             // 这里的错误已在拦截器中弹出 message，这里仅做兜底提示

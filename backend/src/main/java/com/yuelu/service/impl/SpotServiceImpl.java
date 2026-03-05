@@ -43,6 +43,23 @@ public class SpotServiceImpl extends ServiceImpl<SpotMapper, Spot> implements Sp
     }
 
     @Override
+    public IPage<Spot> listAdminSpots(Page<Spot> page, String name, String tags) {
+        // 后台管理查询：与前台相同的筛选条件，但排序规则按 ID 降序（最新录入的景点排在前面）
+        LambdaQueryWrapper<Spot> queryWrapper = new LambdaQueryWrapper<>();
+
+        if (StringUtils.hasText(name)) {
+            queryWrapper.like(Spot::getName, name);
+        }
+        if (StringUtils.hasText(tags)) {
+            queryWrapper.like(Spot::getTags, tags);
+        }
+
+        queryWrapper.orderByDesc(Spot::getId);
+
+        return this.page(page, queryWrapper);
+    }
+
+    @Override
     public Spot getSpotById(Long id) {
         return this.getById(id);
     }

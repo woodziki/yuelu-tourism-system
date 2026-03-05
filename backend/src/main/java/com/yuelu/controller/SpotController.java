@@ -60,6 +60,22 @@ public class SpotController {
     }
 
     /**
+     * 后台管理专用：分页查询景点列表（按 ID 降序，最新优先）。
+     *
+     * <p>与前台 /spot/list 接口的入参一致，同样支持按名称和标签筛选。</p>
+     */
+    @GetMapping("/adminList")
+    public Result<IPage<Spot>> adminList(
+            @RequestParam(defaultValue = "1") Long current,
+            @RequestParam(defaultValue = "10") Long size,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String tags) {
+        Page<Spot> page = new Page<>(current, size);
+        IPage<Spot> result = spotService.listAdminSpots(page, name, tags);
+        return Result.success(result);
+    }
+
+    /**
      * 查询景点详情。
      *
      * <p>根据景点 ID 查询详细信息。
@@ -109,5 +125,50 @@ public class SpotController {
         // 这里 Top N 取 20，前端可以只展示前 10 或 20 条
         List<Spot> spots = recommendService.recommendForUser(userId, 20);
         return Result.success(spots);
+    }
+
+    /**
+     * 后台管理：新增景点。
+     *
+     * <p>接收前端提交的 Spot 对象，调用 spotService.save(spot) 写入数据库。</p>
+     *
+     * @param spot 景点实体（id 可为空，自增）
+     * @return 操作结果
+     */
+    @PostMapping("/add")
+    public Result<Void> add(@RequestBody Spot spot) {
+        spotService.save(spot);
+        return Result.success();
+    }
+
+    /**
+     * 后台管理：更新景点。
+     *
+     * <p>根据 spot.id 更新记录，调用 spotService.updateById(spot)。</p>
+     *
+     * @param spot 景点实体（必须包含 id）
+     * @return 操作结果
+     */
+    @PutMapping("/update")
+    public Result<Void> update(@RequestBody Spot spot) {
+        if (spot.getId() == null) {
+            return Result.error("景点 ID 不能为空");
+        }
+        spotService.updateById(spot);
+        return Result.success();
+    }
+
+    /**
+     * 后台管理：删除景点。
+     *
+     * <p>根据路径参数 id 调用 spotService.removeById(id)。</p>
+     *
+     * @param id 景点 ID
+     * @return 操作结果
+     */
+    @DeleteMapping("/delete/{id}")
+    public Result<Void> delete(@PathVariable Long id) {
+        spotService.removeById(id);
+        return Result.success();
     }
 }

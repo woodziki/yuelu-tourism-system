@@ -48,6 +48,9 @@
 - [x] 前端完成“我的收藏”页面（`MyFavorites.vue`），实现个性化收藏夹功能。
 - [x] 搭建“全部景点”浏览大厅（`AllSpots.vue`），完善系统公共游览功能。
 - [x] 完成“打分与评价”全栈闭环（`/comment/add` + `/comment/list` + 详情页评论区），为协同过滤算法提供显式评分数据源。
+- [x] 升级“全部景点”大厅，实现按名称和标签的综合检索功能（`AllSpots.vue` 搜索 + 标签筛选）。
+- [x] 打通“经典路线”模块（`/route/list` + `Routes.vue`），实现路线规划与景点串联的时间轴可视化展示。
+- [x] 后台景点管理 CRUD：后端新增 `POST /spot/add`、`PUT /spot/update`、`DELETE /spot/delete/{id}`，前端 `SpotManage.vue` 表格 + 分页 + 新增/编辑弹窗 + 删除二次确认。
 
 ## 数据库设计（PRD 第 5 章）
 

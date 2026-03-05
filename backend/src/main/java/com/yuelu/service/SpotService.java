@@ -24,6 +24,16 @@ public interface SpotService extends IService<Spot> {
     IPage<Spot> listSpots(Page<Spot> page, String name, String tags);
 
     /**
+     * 后台管理使用的景点列表查询（按 ID 降序，最新优先）。
+     *
+     * @param page 分页对象
+     * @param name 景点名称（模糊搜索，可为空）
+     * @param tags 标签（筛选，可为空）
+     * @return 分页结果
+     */
+    IPage<Spot> listAdminSpots(Page<Spot> page, String name, String tags);
+
+    /**
      * 根据 ID 查询景点详情。
      *
      * @param id 景点 ID

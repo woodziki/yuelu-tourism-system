@@ -71,7 +71,8 @@ public class RecommendServiceImpl implements RecommendService {
         // 3. 如果目标用户在行为矩阵中不存在或没有任何行为，触发冷启动策略
         Map<Long, Double> targetVector = userBehavior.get(userId);
         if (targetVector == null || targetVector.isEmpty()) {
-            return queryHotSpots(10);
+            // 此时没有可用于排除的已看景点，直接传入 null
+            return queryHotSpots(10, null);
         }
 
         // 4. 调用协同过滤推荐工具类，获取推荐景点 ID 列表
@@ -79,7 +80,8 @@ public class RecommendServiceImpl implements RecommendService {
 
         // 5. 若协同过滤结果为空（例如没有相似用户），也降级为热门推荐
         if (recommendSpotIds == null || recommendSpotIds.isEmpty()) {
-            return queryHotSpots(10);
+            // 协同过滤无结果时，排除当前用户已有行为的景点，避免推荐“看过/评过/收藏过”的内容
+            return queryHotSpots(10, targetVector.keySet());
         }
 
         // 6. 根据推荐的景点 ID 查询 t_spot 表，保持推荐顺序
@@ -137,13 +139,17 @@ public class RecommendServiceImpl implements RecommendService {
      * <p>该方法用于冷启动场景（用户无行为数据）或协同过滤结果为空时的兜底推荐，
      * 对应 PRD 3.2 中的“热门景点推荐”。</p>
      *
-     * @param topN 需要返回的景点数量
+     * @param topN          需要返回的景点数量
+     * @param excludeSpotIds 需要排除的景点 ID 集合（可为 null 或空）
      * @return 热门景点列表
      */
-    private List<Spot> queryHotSpots(int topN) {
+    private List<Spot> queryHotSpots(int topN, java.util.Set<Long> excludeSpotIds) {
         LambdaQueryWrapper<Spot> wrapper = new LambdaQueryWrapper<Spot>()
                 .orderByDesc(Spot::getViewCount)
                 .last("LIMIT " + topN);
+        if (excludeSpotIds != null && !excludeSpotIds.isEmpty()) {
+            wrapper.notIn(Spot::getId, excludeSpotIds);
+        }
         return spotMapper.selectList(wrapper);
     }
 
