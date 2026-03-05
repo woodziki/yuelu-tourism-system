@@ -3,6 +3,7 @@ package com.yuelu.controller;
 import com.yuelu.common.Result;
 import com.yuelu.entity.Route;
 import com.yuelu.service.RouteService;
+import com.yuelu.vo.RouteVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,16 +23,16 @@ public class RouteController {
     private RouteService routeService;
 
     /**
-     * 查询所有线路列表。
+     * 查询所有线路列表（含线路下的景点信息）。
      *
-     * <p>返回所有线路的基本信息（包含 tags 和简介）。
-     * 例如：GET /route/list</p>
+     * <p>通过线路-景点关联表 t_route_spot 查询每条线路包含的景点，
+     * 并按 sort 字段（游玩顺序）排序后封装为 RouteVO 返回。</p>
      *
-     * @return 线路列表
+     * @return 线路视图对象列表
      */
     @GetMapping("/list")
-    public Result<List<Route>> list() {
-        List<Route> routes = routeService.listAllRoutes();
+    public Result<List<RouteVO>> list() {
+        List<RouteVO> routes = routeService.listAllRoutesWithSpots();
         return Result.success(routes);
     }
 
