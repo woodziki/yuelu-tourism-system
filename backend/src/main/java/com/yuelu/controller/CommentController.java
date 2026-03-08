@@ -1,6 +1,8 @@
 package com.yuelu.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.dto.CommentAddDTO;
 import com.yuelu.entity.Comment;
@@ -65,6 +67,38 @@ public class CommentController {
         comment.setStar(dto.getStar());
 
         commentService.save(comment);
+        return Result.success();
+    }
+
+    /**
+     * 后台管理：分页查询全站评论（支持关键字搜索）。
+     *
+     * <p>接口：GET /comment/adminList?current=1&size=10&keyword=xxx</p>
+     *
+     * @param current 当前页（默认 1）
+     * @param size    每页大小（默认 10）
+     * @param keyword 关键字（可为空，对 content 做 LIKE）
+     * @return 评论分页数据（CommentVO）
+     */
+    @GetMapping("/adminList")
+    public Result<IPage<CommentVO>> adminList(
+            @RequestParam(defaultValue = "1") Long current,
+            @RequestParam(defaultValue = "10") Long size,
+            @RequestParam(required = false) String keyword) {
+        Page<Comment> page = new Page<>(current, size);
+        IPage<CommentVO> result = commentService.listAdminComments(page, keyword);
+        return Result.success(result);
+    }
+
+    /**
+     * 后台管理：物理删除评论（违规内容处置）。
+     *
+     * @param id 评论 ID
+     * @return 操作结果
+     */
+    @DeleteMapping("/delete/{id}")
+    public Result<Void> delete(@PathVariable Long id) {
+        commentService.removeById(id);
         return Result.success();
     }
 

@@ -42,5 +42,17 @@ public class CommentVO {
      * 评论时间（格式化后的字符串，如 "2026-03-04 12:30"）。
      */
     private String time;
+
+    /**
+     * 景点名称（后台评论管理使用）。
+     */
+    private String spotName;
+
+    /**
+     * 评论创建时间（后台评论管理使用，格式化字符串）。
+     *
+     * <p>与 time 含义一致，保留两个字段是为了兼容前台旧代码与后台新表格字段名。</p>
+     */
+    private String createTime;
 }
 
