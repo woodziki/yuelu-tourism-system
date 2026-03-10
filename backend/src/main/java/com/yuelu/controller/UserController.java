@@ -1,5 +1,7 @@
 package com.yuelu.controller;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.dto.LoginDTO;
 import com.yuelu.dto.RegisterDTO;
@@ -12,8 +14,10 @@ import org.springframework.web.bind.annotation.*;
 /**
  * 用户认证控制器。
  *
- * <p>提供注册、登录接口；白名单内接口无需 Token，其余接口由 JwtInterceptor 校验 Token。</p>
+ * <p>提供注册、登录接口；白名单内接口无需 Token。
+ * 后台管理接口（如 adminList）需携带 Token 访问。</p>
  */
+
 @RestController
 @RequestMapping("/user")
 public class UserController {
@@ -48,5 +52,24 @@ public class UserController {
     public Result<LoginVO> login(@RequestBody LoginDTO dto) {
         LoginVO vo = userService.login(dto);
         return Result.success(vo);
+    }
+
+    /**
+     * 后台管理：分页查询用户列表，支持按用户名或昵称模糊搜索。
+     * 返回数据已脱敏（password 为 null）。
+     *
+     * @param current 页码（默认 1）
+     * @param size    每页条数（默认 10）
+     * @param keyword 关键字（可选，对 username、nickname 模糊匹配）
+     * @return 用户分页数据
+     */
+    @GetMapping("/adminList")
+    public Result<IPage<User>> adminList(
+            @RequestParam(defaultValue = "1") Long current,
+            @RequestParam(defaultValue = "10") Long size,
+            @RequestParam(required = false) String keyword) {
+        Page<User> page = new Page<>(current, size);
+        IPage<User> result = userService.listAdminUsers(page, keyword);
+        return Result.success(result);
     }
 }

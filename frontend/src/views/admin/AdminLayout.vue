@@ -18,6 +18,10 @@
             <i class="el-icon-location-outline"></i>
             <span slot="title">📍 景点管理</span>
           </el-menu-item>
+          <el-menu-item index="/admin/routes">
+            <i class="el-icon-guide"></i>
+            <span slot="title">🚩 线路管理</span>
+          </el-menu-item>
           <el-menu-item index="/admin/comments">
             <i class="el-icon-chat-dot-square"></i>
             <span slot="title">💬 评论管理</span>

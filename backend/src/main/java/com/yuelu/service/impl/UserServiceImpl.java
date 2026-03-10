@@ -1,6 +1,8 @@
 package com.yuelu.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.yuelu.dto.LoginDTO;
 import com.yuelu.dto.RegisterDTO;
@@ -60,5 +62,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         String token = jwtUtil.createToken(user.getId(), user.getUsername());
         return new LoginVO(token, user.getId(), user.getUsername(), user.getNickname());
+    }
+
+    @Override
+    public IPage<User> listAdminUsers(Page<User> page, String keyword) {
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w
+                    .like(User::getUsername, keyword)
+                    .or()
+                    .like(User::getNickname, keyword));
+        }
+        wrapper.orderByDesc(User::getId);
+        IPage<User> result = this.page(page, wrapper);
+        // 安全脱敏：每条记录的 password 设为 null，避免泄露
+        result.getRecords().forEach(u -> u.setPassword(null));
+        return result;
     }
 }

@@ -33,6 +33,10 @@
       - 调用协同过滤算法获取推荐景点 ID，再回查 `t_spot` 返回完整信息
     - 冷启动策略：当目标用户无行为数据或无相似用户时，按 `view_count` 降序返回 Top 10 热门景点
     - 推荐接口：`GET /spot/recommend`（需登录，从 Token 中解析当前用户 ID）
+  - ✅ 后台用户管理（UserManage）
+    - 后端：`UserService.listAdminUsers` 分页查询、按用户名/昵称模糊搜索、返回前密码脱敏
+    - 接口：`GET /user/adminList`（current、size、keyword）
+    - 前端：`UserManage.vue` 搜索区、表格（ID/用户名/昵称/注册时间）、分页器
 
 ## 开发日志 / 更新记录
 
@@ -51,6 +55,7 @@
 - [x] 升级“全部景点”大厅，实现按名称和标签的综合检索功能（`AllSpots.vue` 搜索 + 标签筛选）。
 - [x] 打通“经典路线”模块（`/route/list` + `Routes.vue`），实现路线规划与景点串联的时间轴可视化展示。
 - [x] 后台景点管理 CRUD：后端新增 `POST /spot/add`、`PUT /spot/update`、`DELETE /spot/delete/{id}`，前端 `SpotManage.vue` 表格 + 分页 + 新增/编辑弹窗 + 删除二次确认。
+- [x] 后台用户管理：`GET /user/adminList` 分页查询用户（支持按用户名/昵称搜索），`UserManage.vue` 展示表格与分页，返回数据密码脱敏。
 
 ## 数据库设计（PRD 第 5 章）
 
@@ -137,10 +142,18 @@
   - 返回：`Result<LoginVO>`（`token`、`userId`、`username`、`nickname`）
   - 需登录的接口请在请求头携带：`Authorization: Bearer <token>`
 
+### 后台用户管理接口（UserController）
+
+- **GET `/user/adminList`**：后台分页查询用户列表
+  - 参数：`current`（页码，默认 1）、`size`（每页大小，默认 10）、`keyword`（用户名或昵称模糊搜索，可选）
+  - 返回：分页结果（`Result<IPage<User>>`），每条记录的 `password` 已脱敏为 `null`
+  - 需登录：需携带 `Authorization: Bearer <token>` 请求头
+  - 示例：`GET /user/adminList?current=1&size=10&keyword=张三`
+
 ### 鉴权说明
 
-- **白名单**（无需 Token）：`/user/login`、`/user/register`、`/spot/**`、`/route/**`
-- **需登录**：如后续的 `/favorite/**`、`/comment/**` 等，未带或 Token 无效时返回 `code=401`、`message="请先登录"`
+- **白名单**（无需 Token）：`/user/login`、`/user/register`、`/spot/**`、`/route/**`、`/comment/list`
+- **需登录**：如 `/favorite/**`、`/comment/add`、`/user/adminList` 等，未带或 Token 无效时返回 `code=401`、`message="请先登录"`
 
 ## 下一步计划
 

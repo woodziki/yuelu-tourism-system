@@ -11,6 +11,7 @@ import Routes from '@/views/Routes.vue'
 // Admin
 import AdminLayout from '@/views/admin/AdminLayout.vue'
 import SpotManage from '@/views/admin/SpotManage.vue'
+import RouteManage from '@/views/admin/RouteManage.vue'
 import CommentManage from '@/views/admin/CommentManage.vue'
 import UserManage from '@/views/admin/UserManage.vue'
 
@@ -67,6 +68,11 @@ const router = new Router({
           path: 'spots',
           name: 'AdminSpots',
           component: SpotManage
+        },
+        {
+          path: 'routes',
+          name: 'AdminRoutes',
+          component: RouteManage
         },
         {
           path: 'comments',

@@ -1,7 +1,10 @@
 package com.yuelu.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.yuelu.dto.RouteDTO;
 import com.yuelu.entity.Route;
 import com.yuelu.entity.RouteSpot;
 import com.yuelu.entity.Spot;
@@ -11,7 +14,10 @@ import com.yuelu.mapper.SpotMapper;
 import com.yuelu.service.RouteService;
 import com.yuelu.vo.RouteVO;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -117,5 +123,84 @@ public class RouteServiceImpl extends ServiceImpl<RouteMapper, Route> implements
             voList.add(vo);
         }
         return voList;
+    }
+
+    @Override
+    public IPage<Route> listAdminRoutes(Page<Route> page, String keyword) {
+        LambdaQueryWrapper<Route> wrapper = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(keyword)) {
+            wrapper.like(Route::getName, keyword);
+        }
+        wrapper.orderByDesc(Route::getId);
+        return this.page(page, wrapper);
+    }
+
+    @Override
+    public void addRoute(RouteDTO dto) {
+        Route route = new Route();
+        route.setName(dto.getName());
+        route.setIntro(dto.getIntro());
+        route.setMapImg(dto.getMapImg());
+        route.setTags(dto.getTags());
+        this.save(route);
+
+        Long routeId = route.getId();
+        if (!CollectionUtils.isEmpty(dto.getSpotIds())) {
+            for (int i = 0; i < dto.getSpotIds().size(); i++) {
+                RouteSpot rs = new RouteSpot();
+                rs.setRouteId(routeId);
+                rs.setSpotId(dto.getSpotIds().get(i));
+                rs.setSort(i + 1);
+                routeSpotMapper.insert(rs);
+            }
+        }
+    }
+
+    @Override
+    public void updateRoute(RouteDTO dto) {
+        if (dto.getId() == null) {
+            throw new IllegalArgumentException("线路 ID 不能为空");
+        }
+        Route route = new Route();
+        route.setId(dto.getId());
+        route.setName(dto.getName());
+        route.setIntro(dto.getIntro());
+        route.setMapImg(dto.getMapImg());
+        route.setTags(dto.getTags());
+        this.updateById(route);
+
+        routeSpotMapper.delete(new LambdaQueryWrapper<RouteSpot>().eq(RouteSpot::getRouteId, dto.getId()));
+
+        if (!CollectionUtils.isEmpty(dto.getSpotIds())) {
+            for (int i = 0; i < dto.getSpotIds().size(); i++) {
+                RouteSpot rs = new RouteSpot();
+                rs.setRouteId(dto.getId());
+                rs.setSpotId(dto.getSpotIds().get(i));
+                rs.setSort(i + 1);
+                routeSpotMapper.insert(rs);
+            }
+        }
+    }
+
+    @Override
+    public void deleteRoute(Long id) {
+        routeSpotMapper.delete(new LambdaQueryWrapper<RouteSpot>().eq(RouteSpot::getRouteId, id));
+        this.removeById(id);
+    }
+
+    @Override
+    public List<Long> getSpotIdsByRouteId(Long routeId) {
+        List<RouteSpot> list = routeSpotMapper.selectList(
+                new LambdaQueryWrapper<RouteSpot>()
+                        .eq(RouteSpot::getRouteId, routeId)
+                        .orderByAsc(RouteSpot::getSort)
+        );
+        List<Long> spotIds = new ArrayList<>();
+        for (RouteSpot rs : list) {
+            if (rs.getSpotId() != null) {
+                spotIds.add(rs.getSpotId());
+            }
+        }
+        return spotIds;
     }
 }
