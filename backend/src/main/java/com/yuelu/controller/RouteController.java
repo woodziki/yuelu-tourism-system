@@ -1,16 +1,28 @@
 package com.yuelu.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.dto.RouteDTO;
+import com.yuelu.entity.Comment;
+import com.yuelu.entity.Favorite;
 import com.yuelu.entity.Route;
 import com.yuelu.service.RouteService;
+import com.yuelu.service.CommentService;
+import com.yuelu.service.FavoriteService;
+import com.yuelu.util.JwtUtil;
 import com.yuelu.vo.RouteVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 线路控制器。
@@ -25,6 +37,18 @@ public class RouteController {
     @Autowired
     private RouteService routeService;
 
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Autowired
+    private FavoriteService favoriteService;
+
+    @Autowired
+    private CommentService commentService;
+
+    private static final String HEADER_AUTHORIZATION = "Authorization";
+    private static final String PREFIX_BEARER = "Bearer ";
+
     /**
      * 查询所有线路列表（含线路下的景点信息）。
      *
@@ -34,8 +58,69 @@ public class RouteController {
      * @return 线路视图对象列表
      */
     @GetMapping("/list")
-    public Result<List<RouteVO>> list() {
+    public Result<List<RouteVO>> list(HttpServletRequest request) {
+        // 允许未登录：解析不到 token 或 token 非法时 userId 置空，不抛错
+        Long userId = null;
+        try {
+            String auth = request.getHeader(HEADER_AUTHORIZATION);
+            if (auth != null && auth.startsWith(PREFIX_BEARER)) {
+                String token = auth.substring(PREFIX_BEARER.length()).trim();
+                userId = jwtUtil.getUserId(token);
+            }
+        } catch (Exception ignored) {
+            userId = null;
+        }
+
+        // 1) 获取线路列表（含 spots）
         List<RouteVO> routes = routeService.listAllRoutesWithSpots();
+        if (routes == null || routes.isEmpty()) {
+            return Result.success(Collections.emptyList());
+        }
+
+        // 2) 提取用户偏好集合 U（收藏 + 高分评论>=4），去重
+        Set<Long> userSpotIds = new HashSet<>();
+        if (userId != null) {
+            List<Favorite> favorites = favoriteService.list(
+                    new LambdaQueryWrapper<Favorite>()
+                            .eq(Favorite::getUserId, userId)
+                            .select(Favorite::getSpotId)
+            );
+            for (Favorite f : favorites) {
+                if (f.getSpotId() != null) userSpotIds.add(f.getSpotId());
+            }
+
+            List<Comment> highStarComments = commentService.list(
+                    new LambdaQueryWrapper<Comment>()
+                            .eq(Comment::getUserId, userId)
+                            .ge(Comment::getStar, 4)
+                            .select(Comment::getSpotId)
+            );
+            for (Comment c : highStarComments) {
+                if (c.getSpotId() != null) userSpotIds.add(c.getSpotId());
+            }
+        }
+
+        // 3) 计算 Score = |U ∩ R|，并写入 matchScore
+        for (RouteVO route : routes) {
+            int score = 0;
+            if (route != null && route.getSpots() != null && !userSpotIds.isEmpty()) {
+                for (com.yuelu.entity.Spot s : route.getSpots()) {
+                    if (s != null && s.getId() != null && userSpotIds.contains(s.getId())) {
+                        score++;
+                    }
+                }
+            }
+            route.setMatchScore(score);
+        }
+
+        // 4) 若已登录，则按 matchScore 降序排序
+        if (userId != null) {
+            routes.sort(
+                    Comparator.comparing(RouteVO::getMatchScore, Comparator.nullsFirst(Integer::compareTo))
+                            .reversed()
+                            .thenComparing(RouteVO::getId, Comparator.nullsLast(Comparator.reverseOrder()))
+            );
+        }
         return Result.success(routes);
     }
 

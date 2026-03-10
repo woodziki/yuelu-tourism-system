@@ -36,7 +36,10 @@
                   <p class="route-intro">
                     {{ route.intro || '暂无简介' }}
                   </p>
-                  <div class="route-tags" v-if="route.tags">
+                  <div
+                    class="route-tags"
+                    v-if="(route.tags && parseTags(route.tags).length) || (route.matchScore && route.matchScore > 0)"
+                  >
                     <el-tag
                       v-for="tag in parseTags(route.tags)"
                       :key="tag"
@@ -44,6 +47,15 @@
                       type="info"
                     >
                       {{ tag }}
+                    </el-tag>
+                    <el-tag
+                      v-if="route.matchScore && route.matchScore > 0"
+                      type="danger"
+                      effect="dark"
+                      size="small"
+                      style="margin-left: 8px;"
+                    >
+                      ✨ 命中 {{ route.matchScore }} 个您的心动景点
                     </el-tag>
                   </div>
                 </div>

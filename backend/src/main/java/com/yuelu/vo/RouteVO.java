@@ -29,6 +29,13 @@ public class RouteVO {
     /** 线路标签 */
     private String tags;
 
+    /**
+     * 匹配度得分：命中用户偏好景点的数量（|U ∩ R|）。
+     *
+     * <p>仅在用户登录时用于排序展示；未登录时仍会返回该字段（一般为 0）。</p>
+     */
+    private Integer matchScore;
+
     /** 该线路包含的景点列表（按游玩顺序排序） */
     private List<Spot> spots;
 }
