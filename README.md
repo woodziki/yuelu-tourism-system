@@ -33,6 +33,9 @@
       - 调用协同过滤算法获取推荐景点 ID，再回查 `t_spot` 返回完整信息
     - 冷启动策略：当目标用户无行为数据或无相似用户时，按 `view_count` 降序返回 Top 10 热门景点
     - 推荐接口：`GET /spot/recommend`（需登录，从 Token 中解析当前用户 ID）
+  - ✅ PRD 3.4：线路智能匹配算法（Route Match）
+    - 在 `RouteVO` 中新增 `matchScore`（命中用户心动景点数量，\(Score = |U \\cap R|\)）
+    - `/route/list` 支持“可选登录”：未登录不报错；登录时按 `matchScore` 降序返回
   - ✅ 后台用户管理（UserManage）
     - 后端：`UserService.listAdminUsers` 分页查询、按用户名/昵称模糊搜索、返回前密码脱敏
     - 接口：`GET /user/adminList`（current、size、keyword）
@@ -54,6 +57,7 @@
 - [x] 完成“打分与评价”全栈闭环（`/comment/add` + `/comment/list` + 详情页评论区），为协同过滤算法提供显式评分数据源。
 - [x] 升级“全部景点”大厅，实现按名称和标签的综合检索功能（`AllSpots.vue` 搜索 + 标签筛选）。
 - [x] 打通“经典路线”模块（`/route/list` + `Routes.vue`），实现路线规划与景点串联的时间轴可视化展示。
+- [x] PRD 3.4：线路智能匹配算法：基于用户收藏 + 高分(>=4)评价构建偏好集合，对每条路线计算 `matchScore` 并在登录时按匹配度排序展示。
 - [x] 后台景点管理 CRUD：后端新增 `POST /spot/add`、`PUT /spot/update`、`DELETE /spot/delete/{id}`，前端 `SpotManage.vue` 表格 + 分页 + 新增/编辑弹窗 + 删除二次确认。
 - [x] 后台用户管理：`GET /user/adminList` 分页查询用户（支持按用户名/昵称搜索），`UserManage.vue` 展示表格与分页，返回数据密码脱敏。
 
@@ -120,8 +124,13 @@
 
 ### 线路接口（RouteController）
 
-- **GET `/route/list`**：查询所有线路列表
-  - 返回：线路列表（`Result<List<Route>>`）
+- **GET `/route/list`**：查询所有线路列表（线路 + 线路下景点 + 匹配度）
+  - 返回：线路列表（`Result<List<RouteVO>>`），每条线路包含：
+    - `spots`：按 `t_route_spot.sort` 排序的景点列表
+    - `matchScore`：命中用户偏好景点数量（\(Score = |U \\cap R|\)）
+  - 可选登录：
+    - 未登录：`matchScore` 一般为 0，保持默认顺序返回
+    - 已登录：按 `matchScore` 降序排列（更懂你的路线优先展示）
   - 示例：`GET /route/list`
 
 - **GET `/route/{id}`**：查询线路详情
