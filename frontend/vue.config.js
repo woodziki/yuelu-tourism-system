@@ -14,7 +14,7 @@ module.exports = {
     proxy: {
       // 只要是以 /api 开头的请求，都会被代理到后端
       '/api': {
-        target: 'http://localhost:8080', // 后端服务地址
+        target: 'http://localhost:8081', // 后端服务地址
         changeOrigin: true, // 是否修改请求源（避免某些后端对 Host 有限制）
         pathRewrite: {
           '^/api': '' // 去掉请求路径中的 /api 前缀，例如 /api/user/login -> /user/login
