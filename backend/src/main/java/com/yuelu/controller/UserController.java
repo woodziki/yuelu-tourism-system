@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.dto.LoginDTO;
 import com.yuelu.dto.RegisterDTO;
+import com.yuelu.dto.UserStatusDTO;
+import com.yuelu.dto.UserUpdateDTO;
 import com.yuelu.entity.User;
 import com.yuelu.service.UserService;
 import com.yuelu.vo.LoginVO;
@@ -71,5 +73,29 @@ public class UserController {
         Page<User> page = new Page<>(current, size);
         IPage<User> result = userService.listAdminUsers(page, keyword);
         return Result.success(result);
+    }
+
+    /**
+     * 后台管理：更新用户状态（封禁/解封）。
+     *
+     * @param dto 用户状态参数（id,status）
+     * @return 操作结果
+     */
+    @PutMapping("/updateStatus")
+    public Result<Void> updateStatus(@RequestBody UserStatusDTO dto) {
+        userService.updateStatus(dto.getId(), dto.getStatus());
+        return Result.success();
+    }
+
+    /**
+     * 后台管理：编辑用户信息（当前仅支持昵称）。
+     *
+     * @param dto 用户编辑参数
+     * @return 操作结果
+     */
+    @PutMapping("/updateUser")
+    public Result<Void> updateUser(@RequestBody UserUpdateDTO dto) {
+        userService.updateUser(dto);
+        return Result.success();
     }
 }

@@ -4,14 +4,17 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.entity.Spot;
+import com.yuelu.entity.ViewRecord;
 import com.yuelu.exception.AuthException;
 import com.yuelu.service.RecommendService;
 import com.yuelu.service.SpotService;
+import com.yuelu.service.ViewRecordService;
 import com.yuelu.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -32,6 +35,9 @@ public class SpotController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private ViewRecordService viewRecordService;
 
     private static final String HEADER_AUTHORIZATION = "Authorization";
     private static final String PREFIX_BEARER = "Bearer ";
@@ -85,10 +91,28 @@ public class SpotController {
      * @return 景点详情
      */
     @GetMapping("/{id}")
-    public Result<Spot> getById(@PathVariable Long id) {
+    public Result<Spot> getById(@PathVariable Long id, HttpServletRequest request) {
         Spot spot = spotService.getSpotById(id);
         if (spot == null) {
             return Result.error("景点不存在");
+        }
+        // 尝试解析当前用户：允许未登录访问，解析失败时直接忽略
+        String auth = request.getHeader(HEADER_AUTHORIZATION);
+        if (auth != null && auth.startsWith(PREFIX_BEARER)) {
+            String token = auth.substring(PREFIX_BEARER.length()).trim();
+            try {
+                Long userId = jwtUtil.getUserId(token);
+                if (userId != null) {
+                    ViewRecord record = new ViewRecord();
+                    record.setUserId(userId);
+                    record.setSpotId(id);
+                    record.setCreateTime(LocalDateTime.now());
+                    // 静默写入浏览记录，不影响主链路返回
+                    viewRecordService.save(record);
+                }
+            } catch (Exception ignored) {
+                // 未登录或 token 无效时忽略，不影响前台浏览详情
+            }
         }
         return Result.success(spot);
     }

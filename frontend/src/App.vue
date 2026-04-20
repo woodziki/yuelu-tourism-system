@@ -1,8 +1,20 @@
 <template>
   <div id="app">
     <router-view />
+    <AiAssistant />
   </div>
 </template>
+
+<script>
+import AiAssistant from '@/components/AiAssistant.vue'
+
+export default {
+  name: 'App',
+  components: {
+    AiAssistant
+  }
+}
+</script>
 
 <style>
 /* 清除浏览器默认边距，让背景图能 100% 铺满全屏 */

@@ -28,7 +28,10 @@ CREATE TABLE `t_comment`  (
                               `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
                               `star` int NOT NULL COMMENT 'INT 1-5',
                               `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评价时间',
-                              PRIMARY KEY (`id`) USING BTREE
+                              PRIMARY KEY (`id`) USING BTREE,
+                              INDEX `idx_comment_user_id`(`user_id` ASC) USING BTREE,
+                              INDEX `idx_comment_spot_id`(`spot_id` ASC) USING BTREE,
+                              INDEX `idx_comment_create_time`(`create_time` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -45,20 +48,23 @@ CREATE TABLE `t_favorite`  (
                                `id` bigint NOT NULL AUTO_INCREMENT,
                                `user_id` bigint NOT NULL,
                                `spot_id` bigint NOT NULL,
-                               PRIMARY KEY (`id`) USING BTREE
+                               `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
+                               PRIMARY KEY (`id`) USING BTREE,
+                               UNIQUE INDEX `uk_favorite_user_spot`(`user_id` ASC, `spot_id` ASC) USING BTREE,
+                               INDEX `idx_favorite_create_time`(`create_time` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 9 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of t_favorite
 -- ----------------------------
-INSERT INTO `t_favorite` VALUES (1, 1, 1);
-INSERT INTO `t_favorite` VALUES (2, 1, 16);
-INSERT INTO `t_favorite` VALUES (3, 2, 1);
-INSERT INTO `t_favorite` VALUES (4, 2, 16);
-INSERT INTO `t_favorite` VALUES (5, 2, 17);
-INSERT INTO `t_favorite` VALUES (6, 2, 20);
-INSERT INTO `t_favorite` VALUES (7, 3, 2);
-INSERT INTO `t_favorite` VALUES (8, 3, 5);
+INSERT INTO `t_favorite` VALUES (1, 1, 1, '2026-03-03 08:30:00');
+INSERT INTO `t_favorite` VALUES (2, 1, 16, '2026-03-03 09:10:00');
+INSERT INTO `t_favorite` VALUES (3, 2, 1, '2026-03-04 10:00:00');
+INSERT INTO `t_favorite` VALUES (4, 2, 16, '2026-03-04 10:20:00');
+INSERT INTO `t_favorite` VALUES (5, 2, 17, '2026-03-05 11:10:00');
+INSERT INTO `t_favorite` VALUES (6, 2, 20, '2026-03-05 14:25:00');
+INSERT INTO `t_favorite` VALUES (7, 3, 2, '2026-03-06 16:00:00');
+INSERT INTO `t_favorite` VALUES (8, 3, 5, '2026-03-06 18:40:00');
 
 -- ----------------------------
 -- Table structure for t_route
@@ -90,7 +96,9 @@ CREATE TABLE `t_route_spot`  (
                                  `route_id` bigint NOT NULL COMMENT 'FK',
                                  `spot_id` bigint NOT NULL COMMENT 'FK',
                                  `sort` int NOT NULL COMMENT '游玩顺序 (1,2,3...)',
-                                 PRIMARY KEY (`id`) USING BTREE
+                                 PRIMARY KEY (`id`) USING BTREE,
+                                 INDEX `idx_route_spot_route_sort`(`route_id` ASC, `sort` ASC) USING BTREE,
+                                 INDEX `idx_route_spot_spot_id`(`spot_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 26 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -171,7 +179,8 @@ INSERT INTO `t_spot` VALUES (25, '岳麓山西门游客中心', '桃花岭方向
 INSERT INTO `t_spot` VALUES (26, '岳麓山索道上站', '直达山顶观景平台', '<p>敞篷索道的终点，下车即可步行至观景平台，是体力有限游客登顶的最佳选择。</p>', 0.00, '0小时', '现代游乐', 2800, 4.7, '/img/suodao.jpg');
 INSERT INTO `t_spot` VALUES (27, '岳麓山索道下站', '索道起点，体验林间穿梭', '<p>位于东门附近，从这里购票上车，上行票价50元/人，下行40元/人，开启林间穿梭之旅。</p>', 0.00, '0小时', '现代游乐', 2900, 4.6, '/img/suodao.jpg');
 INSERT INTO `t_spot` VALUES (28, '岳麓山心悦线补给站', '登山途中的能量补给', '<p>为徒步登山的游客精心准备的休息站点，提供饮水、小吃、医疗急救等贴心服务。</p>', 0.00, '0.5小时', '现代游乐', 950, 4.5, '/img/xinyuexianbujizhan.jpg');
-INSERT INTO `t_spot` VALUES (30, 'ceshi', '666', '', 0.00, '', '', 0, 0, '');
+INSERT INTO `t_spot` VALUES (31, '中南大学', '中南大学(本部北校区)位于长沙市岳麓区麓山南路932号。是教育部直属的综合性全国重点大学，国家211工程首批重点建设高校。国家985工程部省重点共建的高水平大学，是中国首批2011计划高校。', '', 0.00, '0.5小时', '历史人文', 0, 0, '\img\zhongnan.jpg');
+INSERT INTO `t_spot` VALUES (32, '长沙会战碑', '岳麓山顶，云麓宫旁，一块青石碑竖立在六角亭内。这块立于1948年的石碑是为纪念长沙会战胜利而设立的，碑刻记述了1939年9月起国民革命军陆军第九战区全体将士奋勇抗日的悲壮事迹。', '', 0.00, '0.5小时', '历史人文', 0, 0, '\img\changshahuizhanbei.jpg');
 
 -- ----------------------------
 -- Table structure for t_user
@@ -182,28 +191,45 @@ CREATE TABLE `t_user`  (
                            `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Unique',
                            `password` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
                            `nickname` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                           `status` int NOT NULL DEFAULT 0 COMMENT '账号状态：0正常，1封禁',
                            `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
                            PRIMARY KEY (`id`) USING BTREE,
-                           UNIQUE INDEX `username`(`username` ASC) USING BTREE
+                           UNIQUE INDEX `username`(`username` ASC) USING BTREE,
+                           INDEX `idx_user_status`(`status` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 16 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of t_user
 -- ----------------------------
-INSERT INTO `t_user` VALUES (1, 'test01', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '第一个测试游客', '2026-02-26 14:32:52');
-INSERT INTO `t_user` VALUES (2, 'test02', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '知音用户', '2026-03-03 22:33:41');
-INSERT INTO `t_user` VALUES (3, 'test03', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '路人用户', '2026-03-03 22:33:41');
-INSERT INTO `t_user` VALUES (4, 'history_fan1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '楚风汉韵', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (5, 'history_fan2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '考古小达人', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (6, 'history_fan3', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '历史长河', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (7, 'nature_lover1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '森系少女', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (8, 'nature_lover2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '山水游人', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (9, 'nature_lover3', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '绿野寻踪', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (10, 'religion_seeker1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '云水禅心', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (11, 'religion_seeker2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '寻道岳麓', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (12, 'modern_kid1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '都市探险家', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (13, 'modern_kid2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '高空爱好者', '2026-03-05 17:29:37');
-INSERT INTO `t_user` VALUES (14, 'zk', '$2a$10$OfkTWgAUypWphmIWIZxQhuAChLKyE/PJbF4qxxRJWCpc3xkrFZFny', 'z', '2026-03-06 15:39:04');
-INSERT INTO `t_user` VALUES (15, 'admin', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '超级管理员', '2026-03-07 01:08:50');
+INSERT INTO `t_user` VALUES (1, 'test01', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '第一个测试游客', 0, '2026-02-26 14:32:52');
+INSERT INTO `t_user` VALUES (2, 'test02', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '知音用户', 0, '2026-03-03 22:33:41');
+INSERT INTO `t_user` VALUES (3, 'test03', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '路人用户', 0, '2026-03-03 22:33:41');
+INSERT INTO `t_user` VALUES (4, 'history_fan1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '楚风汉韵', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (5, 'history_fan2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '考古小达人', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (6, 'history_fan3', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '历史长河', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (7, 'nature_lover1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '森系少女', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (8, 'nature_lover2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '山水游人', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (9, 'nature_lover3', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '绿野寻踪', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (10, 'religion_seeker1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '云水禅心', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (11, 'religion_seeker2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '寻道岳麓', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (12, 'modern_kid1', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '都市探险家', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (13, 'modern_kid2', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '高空爱好者', 0, '2026-03-05 17:29:37');
+INSERT INTO `t_user` VALUES (14, 'zk', '$2a$10$OfkTWgAUypWphmIWIZxQhuAChLKyE/PJbF4qxxRJWCpc3xkrFZFny', 'z', 0, '2026-03-06 15:39:04');
+INSERT INTO `t_user` VALUES (15, 'admin', '$2a$10$nGAqi.DyHXNCO6f3K6auLu3oiEoV2Gra3b.TUsJVE1OJYRRpvLYjG', '超级管理员', 0, '2026-03-07 01:08:50');
+
+-- ----------------------------
+-- Table structure for t_view_record
+-- ----------------------------
+DROP TABLE IF EXISTS `t_view_record`;
+CREATE TABLE `t_view_record`  (
+                                  `id` bigint NOT NULL AUTO_INCREMENT,
+                                  `user_id` bigint NOT NULL COMMENT '用户ID',
+                                  `spot_id` bigint NOT NULL COMMENT '景点ID',
+                                  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '浏览时间',
+                                  PRIMARY KEY (`id`) USING BTREE,
+                                  INDEX `idx_view_user_id`(`user_id` ASC) USING BTREE,
+                                  INDEX `idx_view_spot_id`(`spot_id` ASC) USING BTREE,
+                                  INDEX `idx_view_create_time`(`create_time` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;

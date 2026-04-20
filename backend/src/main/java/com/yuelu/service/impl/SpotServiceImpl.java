@@ -1,7 +1,6 @@
 package com.yuelu.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -62,12 +61,14 @@ public class SpotServiceImpl extends ServiceImpl<SpotMapper, Spot> implements Sp
 
     @Override
     public Spot getSpotById(Long id) {
-        // 1. 核心动作：在数据库层面直接让 view_count 字段 +1，解决并发问题
-        this.update(new LambdaUpdateWrapper<Spot>()
-                .eq(Spot::getId, id)
-                .setSql("view_count = view_count + 1"));
+        // 通过 SQL 原子更新实现并发安全：
+        // update t_spot set view_count = view_count + 1 where id = ?
+        this.baseMapper.incrementViewCount(id);
+        return this.getById(id);
+    }
 
-        // 2. 返回最新（浏览量已经增加后）的景点数据给前端
+    @Override
+    public Spot getSpotByIdPlain(Long id) {
         return this.getById(id);
     }
 }

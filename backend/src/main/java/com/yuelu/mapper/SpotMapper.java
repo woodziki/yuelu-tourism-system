@@ -3,6 +3,8 @@ package com.yuelu.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.yuelu.entity.Spot;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 
 /**
  * 景点表 Mapper 接口。
@@ -12,4 +14,15 @@ import org.apache.ibatis.annotations.Mapper;
  */
 @Mapper
 public interface SpotMapper extends BaseMapper<Spot> {
+
+    /**
+     * 原子自增景点浏览量。
+     *
+     * <p>等价 SQL：update t_spot set view_count = view_count + 1 where id = ?</p>
+     *
+     * @param id 景点 ID
+     * @return 影响行数
+     */
+    @Update("update t_spot set view_count = view_count + 1 where id = #{id}")
+    int incrementViewCount(@Param("id") Long id);
 }

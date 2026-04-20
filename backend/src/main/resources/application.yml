@@ -18,3 +18,9 @@ jwt:
   secret: yuelu-tourism-jwt-secret-key-32bytes!!
   expire-hours: 72
 
+# AI 智能导游大模型配置 (火山引擎 Bot 应用版)
+ai:
+  mock-enabled: false
+  base-url: https://ark.cn-beijing.volces.com/api/v3/bots/chat/completions
+  api-key: ark-758ace1a-d30e-496e-af8d-8e95698e61df-2fd43
+  model: bot-20260421164545-xl69h

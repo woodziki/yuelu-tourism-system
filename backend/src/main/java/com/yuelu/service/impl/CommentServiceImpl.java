@@ -72,7 +72,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
             // 关联景点名称
             if (c.getSpotId() != null) {
-                Spot spot = spotService.getSpotById(c.getSpotId());
+                // 后台联表展示使用纯查询，避免误增浏览量
+                Spot spot = spotService.getSpotByIdPlain(c.getSpotId());
                 vo.setSpotName(spot == null ? "未知景点" : spot.getName());
             } else {
                 vo.setSpotName("未知景点");

@@ -34,10 +34,20 @@ public interface SpotService extends IService<Spot> {
     IPage<Spot> listAdminSpots(Page<Spot> page, String name, String tags);
 
     /**
-     * 根据 ID 查询景点详情。
+     * 根据 ID 查询景点详情，并执行浏览量原子 +1。
      *
      * @param id 景点 ID
      * @return 景点对象
      */
     Spot getSpotById(Long id);
+
+    /**
+     * 根据 ID 查询景点详情（纯查询，不修改浏览量）。
+     *
+     * <p>用于后台管理、联表展示等场景，避免“被动读”误增浏览量。</p>
+     *
+     * @param id 景点 ID
+     * @return 景点对象
+     */
+    Spot getSpotByIdPlain(Long id);
 }
