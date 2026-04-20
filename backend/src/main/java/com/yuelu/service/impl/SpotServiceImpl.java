@@ -1,15 +1,23 @@
 package com.yuelu.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.yuelu.entity.Favorite;
 import com.yuelu.entity.Spot;
+import com.yuelu.mapper.FavoriteMapper;
 import com.yuelu.mapper.SpotMapper;
 import com.yuelu.service.SpotService;
+import com.yuelu.vo.SpotRankingVO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 景点服务实现类。
@@ -19,6 +27,9 @@ import org.springframework.util.StringUtils;
  */
 @Service
 public class SpotServiceImpl extends ServiceImpl<SpotMapper, Spot> implements SpotService {
+
+    @Autowired
+    private FavoriteMapper favoriteMapper;
 
     @Override
     public IPage<Spot> listSpots(Page<Spot> page, String name, String tags) {
@@ -62,12 +73,82 @@ public class SpotServiceImpl extends ServiceImpl<SpotMapper, Spot> implements Sp
 
     @Override
     public Spot getSpotById(Long id) {
-        // 1. 核心动作：在数据库层面直接让 view_count 字段 +1，解决并发问题
-        this.update(new LambdaUpdateWrapper<Spot>()
-                .eq(Spot::getId, id)
-                .setSql("view_count = view_count + 1"));
-
-        // 2. 返回最新（浏览量已经增加后）的景点数据给前端
+        // 通过 SQL 原子更新实现并发安全：
+        // update t_spot set view_count = view_count + 1 where id = ?
+        this.baseMapper.incrementViewCount(id);
         return this.getById(id);
+    }
+
+    @Override
+    public Spot getSpotByIdPlain(Long id) {
+        return this.getById(id);
+    }
+
+    @Override
+    public List<SpotRankingVO> listRankings(String type, Integer limit) {
+        int safeLimit = limit == null ? 10 : Math.max(1, Math.min(limit, 20));
+        String rankingType = StringUtils.hasText(type) ? type : "hot";
+        List<Spot> spots = this.list();
+        Map<Long, Integer> favoriteCountMap = "favorite".equals(rankingType) ? queryFavoriteCountMap() : new HashMap<>();
+
+        spots.sort((a, b) -> {
+            int valueCompare = Double.compare(rankingValue(b, rankingType, favoriteCountMap), rankingValue(a, rankingType, favoriteCountMap));
+            if (valueCompare != 0) {
+                return valueCompare;
+            }
+            return Long.compare(b.getId() == null ? 0 : b.getId(), a.getId() == null ? 0 : a.getId());
+        });
+
+        List<SpotRankingVO> rankings = new ArrayList<>();
+        for (Spot spot : spots) {
+            if (spot == null || spot.getId() == null) {
+                continue;
+            }
+            SpotRankingVO vo = new SpotRankingVO();
+            vo.setRank(rankings.size() + 1);
+            vo.setSpot(spot);
+            double value = rankingValue(spot, rankingType, favoriteCountMap);
+            vo.setValue(value);
+            vo.setLabel(buildRankingLabel(rankingType, value));
+            rankings.add(vo);
+            if (rankings.size() >= safeLimit) {
+                break;
+            }
+        }
+        return rankings;
+    }
+
+    private Map<Long, Integer> queryFavoriteCountMap() {
+        List<Favorite> favorites = favoriteMapper.selectList(null);
+        Map<Long, Integer> countMap = new HashMap<>();
+        for (Favorite favorite : favorites) {
+            if (favorite != null && favorite.getSpotId() != null) {
+                countMap.merge(favorite.getSpotId(), 1, Integer::sum);
+            }
+        }
+        return countMap;
+    }
+
+    private double rankingValue(Spot spot, String type, Map<Long, Integer> favoriteCountMap) {
+        if (spot == null) {
+            return 0;
+        }
+        if ("score".equals(type)) {
+            return spot.getScore() == null ? 0 : spot.getScore();
+        }
+        if ("favorite".equals(type)) {
+            return favoriteCountMap.getOrDefault(spot.getId(), 0);
+        }
+        return spot.getViewCount() == null ? 0 : spot.getViewCount();
+    }
+
+    private String buildRankingLabel(String type, double value) {
+        if ("score".equals(type)) {
+            return String.format("%.1f 分", value);
+        }
+        if ("favorite".equals(type)) {
+            return (int) value + " 次收藏";
+        }
+        return (int) value + " 次浏览";
     }
 }

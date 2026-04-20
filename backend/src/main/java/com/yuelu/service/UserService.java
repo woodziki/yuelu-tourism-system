@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.yuelu.dto.LoginDTO;
 import com.yuelu.dto.RegisterDTO;
+import com.yuelu.dto.UserUpdateDTO;
 import com.yuelu.entity.User;
 import com.yuelu.vo.LoginVO;
 
@@ -24,6 +25,21 @@ public interface UserService extends IService<User> {
      * @return 用户分页数据（已脱敏）
      */
     IPage<User> listAdminUsers(Page<User> page, String keyword);
+
+    /**
+     * 后台管理：更新用户状态（0=正常，1=封禁）。
+     *
+     * @param id     用户 ID
+     * @param status 账号状态
+     */
+    void updateStatus(Long id, Integer status);
+
+    /**
+     * 后台管理：编辑用户信息（不含密码）。
+     *
+     * @param dto 编辑参数
+     */
+    void updateUser(UserUpdateDTO dto);
 
     /**
      * 注册：校验用户名是否已存在，密码加密后入库。

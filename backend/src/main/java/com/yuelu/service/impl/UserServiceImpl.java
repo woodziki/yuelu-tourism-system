@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.yuelu.dto.LoginDTO;
 import com.yuelu.dto.RegisterDTO;
+import com.yuelu.dto.UserUpdateDTO;
 import com.yuelu.entity.User;
 import com.yuelu.mapper.UserMapper;
 import com.yuelu.service.UserService;
@@ -45,6 +46,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setUsername(dto.getUsername().trim());
         user.setPassword(ENCODER.encode(dto.getPassword())); // 仅此处写入密码，密文存库
         user.setNickname(StringUtils.hasText(dto.getNickname()) ? dto.getNickname().trim() : dto.getUsername());
+        user.setStatus(0);
         user.setCreateTime(LocalDateTime.now());
         this.save(user);
         user.setPassword(null); // 返回前脱敏
@@ -59,6 +61,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         User user = this.getOne(new LambdaQueryWrapper<User>().eq(User::getUsername, dto.getUsername()));
         if (user == null || !ENCODER.matches(dto.getPassword(), user.getPassword())) {
             throw new IllegalArgumentException("用户名或密码错误");
+        }
+        if (user.getStatus() != null && user.getStatus() == 1) {
+            throw new IllegalArgumentException("账号已被封禁，请联系管理员");
         }
         String token = jwtUtil.createToken(user.getId(), user.getUsername());
         return new LoginVO(token, user.getId(), user.getUsername(), user.getNickname());
@@ -78,5 +83,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 安全脱敏：每条记录的 password 设为 null，避免泄露
         result.getRecords().forEach(u -> u.setPassword(null));
         return result;
+    }
+
+    @Override
+    public void updateStatus(Long id, Integer status) {
+        if (id == null) {
+            throw new IllegalArgumentException("用户 ID 不能为空");
+        }
+        if (status == null || (status != 0 && status != 1)) {
+            throw new IllegalArgumentException("状态值非法，仅支持 0(正常) 或 1(封禁)");
+        }
+        User user = new User();
+        user.setId(id);
+        user.setStatus(status);
+        this.updateById(user);
+    }
+
+    @Override
+    public void updateUser(UserUpdateDTO dto) {
+        if (dto == null || dto.getId() == null) {
+            throw new IllegalArgumentException("用户 ID 不能为空");
+        }
+        User user = new User();
+        user.setId(dto.getId());
+        user.setNickname(StringUtils.hasText(dto.getNickname()) ? dto.getNickname().trim() : null);
+        this.updateById(user);
     }
 }

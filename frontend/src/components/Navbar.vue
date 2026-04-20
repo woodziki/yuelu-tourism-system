@@ -25,6 +25,7 @@
         <el-menu-item index="/">首页推荐</el-menu-item>
         <el-menu-item index="/all">全部景点</el-menu-item>
         <el-menu-item index="/favorites">我的收藏</el-menu-item>
+        <el-menu-item index="/comments">我的评论</el-menu-item>
         <el-menu-item index="/routes">经典路线</el-menu-item>
       </el-menu>
     </div>

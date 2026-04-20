@@ -14,6 +14,10 @@
           active-text-color="#409EFF"
           router
         >
+          <el-menu-item index="/admin/dashboard">
+            <i class="el-icon-data-analysis"></i>
+            <span slot="title">📊 数据看板</span>
+          </el-menu-item>
           <el-menu-item index="/admin/spots">
             <i class="el-icon-location-outline"></i>
             <span slot="title">📍 景点管理</span>

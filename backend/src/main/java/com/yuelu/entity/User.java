@@ -38,6 +38,11 @@ public class User {
     private String nickname;
 
     /**
+     * 账号状态：0=正常，1=封禁。
+     */
+    private Integer status;
+
+    /**
      * 创建时间。
      */
     private LocalDateTime createTime;

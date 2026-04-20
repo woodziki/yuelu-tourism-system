@@ -28,12 +28,14 @@
               <div class="meta-item">
                 <span class="meta-label">评分：</span>
                 <el-rate
+                  v-if="showRate"
                   :value="rateValue"
                   disabled
                   show-score
                   text-color="#f59e0b"
                   score-template="{value} 分"
                 />
+                <span v-else class="meta-value no-score">{{ scoreText }}</span>
               </div>
 
               <div class="meta-item" v-if="spot.duration">
@@ -131,7 +133,17 @@
                 </p>
               </el-card>
             </div>
-            <div v-else class="comment-empty">
+            <div v-if="commentPage.total > commentPage.size" class="comment-pagination">
+              <el-pagination
+                background
+                layout="prev, pager, next, total"
+                :current-page="commentPage.current"
+                :page-size="commentPage.size"
+                :total="commentPage.total"
+                @current-change="handleCommentPageChange"
+              />
+            </div>
+            <div v-else-if="!comments.length" class="comment-empty">
               <el-empty description="还没有人留下评价，快来抢沙发吧～" />
             </div>
           </div>
@@ -204,6 +216,11 @@ export default {
       commentLoading: false,
       commentDialogVisible: false,
       commentSubmitting: false,
+      commentPage: {
+        current: 1,
+        size: 5,
+        total: 0
+      },
       commentForm: {
         star: 0,
         content: ''
@@ -223,6 +240,14 @@ export default {
       if (isNaN(v)) return 0
       // 防御性处理：保证在 0~5 区间内
       return Math.max(0, Math.min(5, v))
+    },
+
+    showRate () {
+      return this.commentPage.total > 0 && this.spot && this.spot.score != null
+    },
+
+    scoreText () {
+      return this.commentLoading ? '评分加载中' : '暂无评分'
     }
   },
 
@@ -266,25 +291,31 @@ export default {
     /**
      * 加载当前景点的评论列表。
      *
-     * 接口：GET /comment/list?spotId=xxx
+     * 接口：GET /comment/page?spotId=xxx&current=1&size=5
      */
     fetchComments () {
       if (!this.spot || !this.spot.id) return
 
       this.commentLoading = true
       request({
-        url: '/comment/list',
+        url: '/comment/page',
         method: 'get',
         params: {
-          spotId: this.spot.id
+          spotId: this.spot.id,
+          current: this.commentPage.current,
+          size: this.commentPage.size
         }
       })
         .then(res => {
-          this.comments = Array.isArray(res) ? res : []
+          this.comments = Array.isArray(res && res.records) ? res.records : []
+          this.commentPage.total = Number((res && res.total) || 0)
+          this.commentPage.current = Number((res && res.current) || 1)
+          this.commentPage.size = Number((res && res.size) || this.commentPage.size)
         })
         .catch(err => {
           console.error('加载评论列表失败：', err)
           this.comments = []
+          this.commentPage.total = 0
         })
         .finally(() => {
           this.commentLoading = false
@@ -384,6 +415,11 @@ export default {
       this.commentDialogVisible = true
     },
 
+    handleCommentPageChange (page) {
+      this.commentPage.current = page
+      this.fetchComments()
+    },
+
     /**
      * 提交评价。
      *
@@ -415,8 +451,8 @@ export default {
           this.commentDialogVisible = false
           this.commentForm.star = 0
           this.commentForm.content = ''
-          // 重新加载评论列表
-          this.fetchComments()
+          this.commentPage.current = 1
+          this.fetchDetail()
         })
         .catch(err => {
           console.error('提交评价失败：', err)
@@ -536,6 +572,10 @@ export default {
   font-weight: 600;
 }
 
+.meta-value.no-score {
+  color: #9ca3af;
+}
+
 /* 标签区域 */
 .tag-list {
   display: flex;
@@ -625,6 +665,11 @@ export default {
 
 .comment-empty {
   margin-top: 8px;
+}
+
+.comment-pagination {
+  margin-top: 16px;
+  text-align: right;
 }
 
 /* 兜底空状态 */

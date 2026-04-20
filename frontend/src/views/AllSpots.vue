@@ -11,7 +11,35 @@
           </p>
         </div>
 
-        <!-- 搜索与筛选区域 -->
+        <el-card class="ranking-card" shadow="never">
+          <div class="ranking-header">
+            <div>
+              <h3 class="ranking-title">景点排行榜</h3>
+              <p class="ranking-desc">从热度、评分和收藏三个角度发现值得一看的景点，热度值来自景点基础展示数据。</p>
+            </div>
+          </div>
+          <el-tabs v-model="activeRankingType" @tab-click="fetchRankings">
+            <el-tab-pane label="热度榜" name="hot" />
+            <el-tab-pane label="高分榜" name="score" />
+            <el-tab-pane label="收藏榜" name="favorite" />
+          </el-tabs>
+          <div v-if="rankingLoading" class="ranking-loading">
+            <el-skeleton :rows="3" animated />
+          </div>
+          <div v-else class="ranking-list">
+            <div
+              v-for="item in rankings"
+              :key="item.spot.id"
+              class="ranking-item"
+              @click="goToDetail(item.spot.id)"
+            >
+              <span class="ranking-index">{{ item.rank }}</span>
+              <span class="ranking-name">{{ item.spot.name }}</span>
+              <span class="ranking-label">{{ formatRankingLabel(item.label) }}</span>
+            </div>
+          </div>
+        </el-card>
+
         <div class="filter-bar">
           <div class="search-area">
             <el-input
@@ -44,21 +72,18 @@
         </div>
 
         <el-row :gutter="24">
-          <!-- 空状态 -->
           <el-col v-if="!spotList.length && !loading" :span="24">
             <div class="empty-wrapper">
               <el-empty description="暂时没有可展示的景点数据～" />
             </div>
           </el-col>
 
-          <!-- 加载中状态 -->
           <el-col v-if="loading" :span="24">
             <div class="loading-wrapper">
               <el-skeleton :rows="4" animated />
             </div>
           </el-col>
 
-          <!-- 全部景点卡片 -->
           <el-col
             v-for="item in spotList"
             :key="item.id"
@@ -73,10 +98,7 @@
               @click.native="goToDetail(item.id)"
             >
               <div class="spot-cover">
-                <img
-                  :src="item.imageUrl || defaultCoverUrl"
-                  alt="景点封面"
-                >
+                <img :src="item.imageUrl || defaultCoverUrl" alt="景点封面">
               </div>
 
               <div class="spot-body">
@@ -101,10 +123,7 @@
                     >
                       {{ tag }}
                     </el-tag>
-                    <span
-                      v-if="!parseTags(item.tags).length"
-                      class="tag-placeholder"
-                    >
+                    <span v-if="!parseTags(item.tags).length" class="tag-placeholder">
                       无标签
                     </span>
                   </div>
@@ -136,26 +155,44 @@ export default {
   data () {
     return {
       spotList: [],
+      rankings: [],
+      activeRankingType: 'hot',
+      rankingLoading: false,
       defaultCoverUrl: 'https://api.dujin.org/bing/1920.php',
       loading: false,
-      // 搜索关键字（按名称模糊查询）
       searchName: '',
-      // 当前选中的标签（为空表示全部）
       activeTag: ''
     }
   },
 
   mounted () {
     this.fetchSpots()
+    this.fetchRankings()
   },
 
   methods: {
-    /**
-     * 加载景点列表（支持名称搜索与标签筛选）。
-     *
-     * 使用 /spot/list 接口，不做推荐算法过滤，仅按后端排序规则返回。
-     * 为方便展示，这里将 size 设置为 100。
-     */
+    fetchRankings () {
+      this.rankingLoading = true
+      request({
+        url: '/spot/rankings',
+        method: 'get',
+        params: {
+          type: this.activeRankingType,
+          limit: 10
+        }
+      })
+        .then(res => {
+          this.rankings = Array.isArray(res) ? res : []
+        })
+        .catch(err => {
+          console.error('加载景点排行榜失败：', err)
+          this.rankings = []
+        })
+        .finally(() => {
+          this.rankingLoading = false
+        })
+    },
+
     fetchSpots () {
       this.loading = true
       request({
@@ -169,7 +206,6 @@ export default {
         }
       })
         .then(res => {
-          // /spot/list 返回的是分页对象 IPage<Spot>，真正的列表在 records 字段中
           this.spotList = (res && Array.isArray(res.records)) ? res.records : []
         })
         .catch(err => {
@@ -181,16 +217,10 @@ export default {
         })
     },
 
-    /**
-     * 点击搜索按钮或回车时触发。
-     */
     onSearch () {
       this.fetchSpots()
     },
 
-    /**
-     * 切换标签筛选时触发。
-     */
     onTagChange () {
       this.fetchSpots()
     },
@@ -201,6 +231,11 @@ export default {
         .split(',')
         .map(t => t.trim())
         .filter(Boolean)
+    },
+
+    formatRankingLabel (label) {
+      if (!label) return ''
+      return label.replace('次浏览', '热度值')
     },
 
     goToDetail (id) {
@@ -247,7 +282,84 @@ export default {
   color: #6b7280;
 }
 
-/* 搜索与筛选区域 */
+.ranking-card {
+  margin: 12px 0 18px;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+}
+
+.ranking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ranking-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #111827;
+}
+
+.ranking-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.ranking-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f9fafb;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ranking-item:hover {
+  background: #ecfdf5;
+  transform: translateY(-2px);
+}
+
+.ranking-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #16a34a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ranking-name {
+  flex: 1;
+  min-width: 0;
+  color: #111827;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ranking-label {
+  font-size: 12px;
+  color: #f97316;
+}
+
+.ranking-loading {
+  padding: 8px 0;
+}
+
 .filter-bar {
   margin: 8px 0 20px;
   padding: 10px 14px;
@@ -278,7 +390,6 @@ export default {
   color: #6b7280;
 }
 
-/* 卡片样式与首页一致 */
 .spot-card {
   margin-bottom: 24px;
   border-radius: 14px;
@@ -400,6 +511,10 @@ export default {
 
   .tag-filter {
     justify-content: flex-start;
+  }
+
+  .ranking-list {
+    grid-template-columns: 1fr;
   }
 }
 </style>

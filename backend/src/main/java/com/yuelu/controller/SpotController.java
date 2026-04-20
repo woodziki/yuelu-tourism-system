@@ -4,14 +4,19 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuelu.common.Result;
 import com.yuelu.entity.Spot;
+import com.yuelu.entity.ViewRecord;
 import com.yuelu.exception.AuthException;
 import com.yuelu.service.RecommendService;
 import com.yuelu.service.SpotService;
+import com.yuelu.service.ViewRecordService;
 import com.yuelu.util.JwtUtil;
+import com.yuelu.vo.RecommendPageVO;
+import com.yuelu.vo.SpotRankingVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -32,6 +37,9 @@ public class SpotController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private ViewRecordService viewRecordService;
 
     private static final String HEADER_AUTHORIZATION = "Authorization";
     private static final String PREFIX_BEARER = "Bearer ";
@@ -85,10 +93,28 @@ public class SpotController {
      * @return 景点详情
      */
     @GetMapping("/{id}")
-    public Result<Spot> getById(@PathVariable Long id) {
+    public Result<Spot> getById(@PathVariable Long id, HttpServletRequest request) {
         Spot spot = spotService.getSpotById(id);
         if (spot == null) {
             return Result.error("景点不存在");
+        }
+        // 尝试解析当前用户：允许未登录访问，解析失败时直接忽略
+        String auth = request.getHeader(HEADER_AUTHORIZATION);
+        if (auth != null && auth.startsWith(PREFIX_BEARER)) {
+            String token = auth.substring(PREFIX_BEARER.length()).trim();
+            try {
+                Long userId = jwtUtil.getUserId(token);
+                if (userId != null) {
+                    ViewRecord record = new ViewRecord();
+                    record.setUserId(userId);
+                    record.setSpotId(id);
+                    record.setCreateTime(LocalDateTime.now());
+                    // 静默写入浏览记录，不影响主链路返回
+                    viewRecordService.save(record);
+                }
+            } catch (Exception ignored) {
+                // 未登录或 token 无效时忽略，不影响前台浏览详情
+            }
         }
         return Result.success(spot);
     }
@@ -111,20 +137,39 @@ public class SpotController {
      */
     @GetMapping("/recommend")
     public Result<List<Spot>> recommend(HttpServletRequest request) {
-        String auth = request.getHeader(HEADER_AUTHORIZATION);
-        String token = null;
-        if (auth != null && auth.startsWith(PREFIX_BEARER)) {
-            token = auth.substring(PREFIX_BEARER.length()).trim();
-        }
-        Long userId = jwtUtil.getUserId(token);
-        if (userId == null) {
-            // 未登录或 Token 无效，直接抛出认证异常，由全局异常处理器返回“请先登录”
-            throw new AuthException();
-        }
+        Long userId = getRequiredUserId(request);
 
         // 这里 Top N 取 20，前端可以只展示前 10 或 20 条
         List<Spot> spots = recommendService.recommendForUser(userId, 20);
         return Result.success(spots);
+    }
+
+    /**
+     * 首页推荐页：返回用户画像和带理由的推荐列表。
+     *
+     * @param request HttpServletRequest，用于获取请求头中的 Token
+     * @return 推荐页展示数据
+     */
+    @GetMapping("/recommendPage")
+    public Result<RecommendPageVO> recommendPage(HttpServletRequest request) {
+        Long userId = getRequiredUserId(request);
+        RecommendPageVO pageVO = recommendService.recommendPageForUser(userId, 20);
+        return Result.success(pageVO);
+    }
+
+    /**
+     * 前台景点排行榜。
+     *
+     * @param type  榜单类型：hot/score/favorite
+     * @param limit 返回数量
+     * @return 排行榜列表
+     */
+    @GetMapping("/rankings")
+    public Result<List<SpotRankingVO>> rankings(
+            @RequestParam(defaultValue = "hot") String type,
+            @RequestParam(defaultValue = "10") Integer limit) {
+        List<SpotRankingVO> rankings = spotService.listRankings(type, limit);
+        return Result.success(rankings);
     }
 
     /**
@@ -170,5 +215,18 @@ public class SpotController {
     public Result<Void> delete(@PathVariable Long id) {
         spotService.removeById(id);
         return Result.success();
+    }
+
+    private Long getRequiredUserId(HttpServletRequest request) {
+        String auth = request.getHeader(HEADER_AUTHORIZATION);
+        String token = null;
+        if (auth != null && auth.startsWith(PREFIX_BEARER)) {
+            token = auth.substring(PREFIX_BEARER.length()).trim();
+        }
+        Long userId = jwtUtil.getUserId(token);
+        if (userId == null) {
+            throw new AuthException();
+        }
+        return userId;
     }
 }

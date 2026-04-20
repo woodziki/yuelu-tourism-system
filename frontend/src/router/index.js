@@ -5,11 +5,13 @@ import Login from '@/views/Login.vue'
 import Home from '@/views/Home.vue'
 import SpotDetail from '@/views/SpotDetail.vue'
 import MyFavorites from '@/views/MyFavorites.vue'
+import MyComments from '@/views/MyComments.vue'
 import AllSpots from '@/views/AllSpots.vue'
 import Routes from '@/views/Routes.vue'
 
 // Admin
 import AdminLayout from '@/views/admin/AdminLayout.vue'
+import Dashboard from '@/views/admin/Dashboard.vue'
 import SpotManage from '@/views/admin/SpotManage.vue'
 import RouteManage from '@/views/admin/RouteManage.vue'
 import CommentManage from '@/views/admin/CommentManage.vue'
@@ -41,6 +43,11 @@ const router = new Router({
       component: MyFavorites
     },
     {
+      path: '/comments',
+      name: 'MyComments',
+      component: MyComments
+    },
+    {
       path: '/routes',
       name: 'Routes',
       component: Routes
@@ -62,8 +69,13 @@ const router = new Router({
     {
       path: '/admin',
       component: AdminLayout,
-      redirect: '/admin/spots',
+      redirect: '/admin/dashboard',
       children: [
+        {
+          path: 'dashboard',
+          name: 'AdminDashboard',
+          component: Dashboard
+        },
         {
           path: 'spots',
           name: 'AdminSpots',

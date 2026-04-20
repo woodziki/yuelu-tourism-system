@@ -8,6 +8,7 @@ import com.yuelu.dto.CommentAddDTO;
 import com.yuelu.entity.Comment;
 import com.yuelu.entity.User;
 import com.yuelu.exception.AuthException;
+import com.yuelu.mapper.SpotMapper;
 import com.yuelu.mapper.UserMapper;
 import com.yuelu.service.CommentService;
 import com.yuelu.vo.CommentVO;
@@ -40,6 +41,10 @@ public class CommentController {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private SpotMapper spotMapper;
+
     @Autowired
     private JwtUtil jwtUtil;
 
@@ -67,6 +72,7 @@ public class CommentController {
         comment.setStar(dto.getStar());
 
         commentService.save(comment);
+        spotMapper.refreshScoreByComments(dto.getSpotId());
         return Result.success();
     }
 
@@ -91,6 +97,43 @@ public class CommentController {
     }
 
     /**
+     * 前台景点详情：分页查询某个景点的评论列表。
+     *
+     * @param spotId  景点 ID
+     * @param current 当前页（默认 1）
+     * @param size    每页大小（默认 5）
+     * @return 评论分页数据
+     */
+    @GetMapping("/page")
+    public Result<IPage<CommentVO>> pageComments(
+            @RequestParam Long spotId,
+            @RequestParam(defaultValue = "1") Long current,
+            @RequestParam(defaultValue = "5") Long size) {
+        Page<Comment> page = new Page<>(current, size);
+        IPage<CommentVO> result = commentService.listSpotComments(page, spotId);
+        return Result.success(result);
+    }
+
+    /**
+     * 用户中心：分页查询当前用户发布过的评论。
+     *
+     * @param current 当前页（默认 1）
+     * @param size    每页大小（默认 10）
+     * @param request HttpServletRequest，用于读取 Token
+     * @return 当前用户评论分页数据
+     */
+    @GetMapping("/my")
+    public Result<IPage<CommentVO>> myComments(
+            @RequestParam(defaultValue = "1") Long current,
+            @RequestParam(defaultValue = "10") Long size,
+            HttpServletRequest request) {
+        Long userId = getUserIdFromRequest(request);
+        Page<Comment> page = new Page<>(current, size);
+        IPage<CommentVO> result = commentService.listMyComments(page, userId);
+        return Result.success(result);
+    }
+
+    /**
      * 后台管理：物理删除评论（违规内容处置）。
      *
      * @param id 评论 ID
@@ -98,7 +141,15 @@ public class CommentController {
      */
     @DeleteMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        commentService.removeById(id);
+        Comment comment = commentService.getById(id);
+        if (comment != null) {
+            commentService.removeById(id);
+            if (comment.getSpotId() != null) {
+                spotMapper.refreshScoreByComments(comment.getSpotId());
+            }
+        } else {
+            commentService.removeById(id);
+        }
         return Result.success();
     }
 

@@ -35,9 +35,36 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="状态" width="110" align="center">
+          <template slot-scope="scope">
+            <el-tag :type="scope.row.status === 1 ? 'danger' : 'success'" size="small">
+              {{ scope.row.status === 1 ? '已封禁' : '正常' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="注册时间" width="180" align="center">
           <template slot-scope="scope">
             {{ formatTime(scope.row.createTime) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="180" align="center" fixed="right">
+          <template slot-scope="scope">
+            <el-button type="text" size="small" @click="handleEdit(scope.row)">
+              编辑
+            </el-button>
+            <el-popconfirm
+              :title="scope.row.status === 1 ? '确定要解除封禁该用户吗？' : '确定要封禁该用户吗？'"
+              @confirm="toggleStatus(scope.row)"
+            >
+              <el-button
+                slot="reference"
+                type="text"
+                size="small"
+                :style="{ color: scope.row.status === 1 ? '#67c23a' : '#f56c6c' }"
+              >
+                {{ scope.row.status === 1 ? '解封' : '封禁' }}
+              </el-button>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -55,6 +82,29 @@
         />
       </div>
     </el-card>
+
+    <!-- 编辑弹窗 -->
+    <el-dialog
+      title="编辑用户信息"
+      :visible.sync="dialogVisible"
+      width="460px"
+      @close="resetForm"
+    >
+      <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px">
+        <el-form-item label="用户名">
+          <el-input v-model="form.username" disabled />
+        </el-form-item>
+        <el-form-item label="昵称" prop="nickname">
+          <el-input v-model="form.nickname" placeholder="请输入昵称" maxlength="50" />
+        </el-form-item>
+      </el-form>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="dialogVisible = false">取 消</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitForm">
+          保 存
+        </el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
@@ -71,7 +121,17 @@ export default {
       current: 1,
       size: 10,
       total: 0,
-      keyword: ''
+      keyword: '',
+      dialogVisible: false,
+      submitLoading: false,
+      form: {
+        id: null,
+        username: '',
+        nickname: ''
+      },
+      formRules: {
+        nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }]
+      }
     }
   },
 
@@ -125,6 +185,67 @@ export default {
     onCurrentChange (val) {
       this.current = val
       this.fetchData()
+    },
+
+    handleEdit (row) {
+      this.form = {
+        id: row.id,
+        username: row.username || '',
+        nickname: row.nickname || ''
+      }
+      this.dialogVisible = true
+      this.$nextTick(() => {
+        this.$refs.formRef && this.$refs.formRef.clearValidate()
+      })
+    },
+
+    toggleStatus (row) {
+      const targetStatus = row.status === 1 ? 0 : 1
+      request({
+        url: '/user/updateStatus',
+        method: 'put',
+        data: {
+          id: row.id,
+          status: targetStatus
+        }
+      })
+        .then(() => {
+          this.$message.success(targetStatus === 1 ? '封禁成功' : '解封成功')
+          this.fetchData()
+        })
+        .catch(() => {})
+    },
+
+    submitForm () {
+      this.$refs.formRef.validate(valid => {
+        if (!valid) return
+        this.submitLoading = true
+        request({
+          url: '/user/updateUser',
+          method: 'put',
+          data: {
+            id: this.form.id,
+            nickname: this.form.nickname
+          }
+        })
+          .then(() => {
+            this.$message.success('更新成功')
+            this.dialogVisible = false
+            this.fetchData()
+          })
+          .catch(() => {})
+          .finally(() => {
+            this.submitLoading = false
+          })
+      })
+    },
+
+    resetForm () {
+      this.form = {
+        id: null,
+        username: '',
+        nickname: ''
+      }
     },
 
     /**

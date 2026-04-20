@@ -23,4 +23,22 @@ public interface CommentService extends IService<Comment> {
      * @return 评论分页数据
      */
     IPage<CommentVO> listAdminComments(Page<Comment> page, String keyword);
+
+    /**
+     * 前台景点详情：分页查询指定景点评论。
+     *
+     * @param page   分页参数
+     * @param spotId 景点 ID
+     * @return 评论分页数据
+     */
+    IPage<CommentVO> listSpotComments(Page<Comment> page, Long spotId);
+
+    /**
+     * 用户中心：分页查询当前用户发布过的评论。
+     *
+     * @param page   分页参数
+     * @param userId 当前用户 ID
+     * @return 评论分页数据
+     */
+    IPage<CommentVO> listMyComments(Page<Comment> page, Long userId);
 }

@@ -1,18 +1,25 @@
 package com.yuelu.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.yuelu.entity.Comment;
 import com.yuelu.entity.Favorite;
 import com.yuelu.entity.Spot;
+import com.yuelu.entity.ViewRecord;
 import com.yuelu.mapper.CommentMapper;
 import com.yuelu.mapper.FavoriteMapper;
 import com.yuelu.mapper.SpotMapper;
+import com.yuelu.mapper.ViewRecordMapper;
 import com.yuelu.service.RecommendService;
 import com.yuelu.util.RecommendUtils;
+import com.yuelu.vo.InterestProfileVO;
+import com.yuelu.vo.RecommendPageVO;
+import com.yuelu.vo.SpotRecommendVO;
+import com.yuelu.vo.TagWeightVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -20,35 +27,44 @@ import java.util.*;
  *
  * <p>本类负责：</p>
  * <ul>
- *     <li>从 t_favorite、t_comment 表加载全量用户行为数据；</li>
- *     <li>将行为数据根据 PRD 的兴趣度公式转换为“用户-景点兴趣度矩阵”；</li>
- *     <li>调用 RecommendUtils（User-based CF + 余弦相似度）计算推荐结果；</li>
- *     <li>根据推荐的景点 ID 查询 t_spot 表，返回完整景点信息；</li>
- *     <li>如果目标用户无行为数据，则回退到“热门景点推荐”（按 view_count 降序 Top 10）。</li>
+ *     <li>融合浏览、收藏、评分三维行为信号；</li>
+ *     <li>引入时间衰减，降低旧行为对推荐的影响；</li>
+ *     <li>通过 User-based CF 产出候选集合，再做标签多样性打散；</li>
+ *     <li>最终返回“相关性 + 多样性”平衡后的 TopN。</li>
  * </ul>
- *
- * <p>兴趣度公式（忽略 W_view）：</p>
- * <pre>
- *     Score = (W_fav * Is_fav) + (W_rate * Rating)
- *     其中：
- *       W_fav = 3（有收藏记录则加 3 分）
- *       Is_fav ∈ {0,1}（是否收藏）
- *       W_rate = 1（评分权重）
- *       Rating = star（1-5 分）
- * </pre>
  */
 @Service
 public class RecommendServiceImpl implements RecommendService {
 
     /**
-     * 收藏权重 W_fav（PRD 指定为 3）。
+     * 浏览权重 W_view（隐式反馈，强度低于收藏与评分）。
+     */
+    private static final double W_VIEW = 1.0;
+
+    /**
+     * 收藏权重 W_fav（显式偏好，权重高）。
      */
     private static final double W_FAV = 3.0;
 
     /**
-     * 评分权重 W_rate（PRD 指定为 1）。
+     * 评分权重 W_rate（评分强度由 star 提供）。
      */
-    private static final double W_RATE = 1.0;
+    private static final double W_RATE = 2.0;
+
+    /**
+     * 时间衰减系数 lambda：decay(days)=exp(-lambda*days)。
+     */
+    private static final double LAMBDA = 0.05;
+
+    /**
+     * CF 候选集合大小。
+     */
+    private static final int CANDIDATE_SIZE = 10;
+
+    /**
+     * 标签配额：同一标签最多保留的景点数量。
+     */
+    private static final int TAG_QUOTA_PER_LABEL = 6;
 
     @Autowired
     private FavoriteMapper favoriteMapper;
@@ -59,98 +75,237 @@ public class RecommendServiceImpl implements RecommendService {
     @Autowired
     private SpotMapper spotMapper;
 
+    @Autowired
+    private ViewRecordMapper viewRecordMapper;
+
     @Override
     public List<Spot> recommendForUser(Long userId, int topN) {
-        // 1. 从数据库加载所有收藏和评论数据
+        if (userId == null || topN <= 0) {
+            return Collections.emptyList();
+        }
+
+        // 1) 加载全量行为数据（浏览 + 收藏 + 评分）
+        List<ViewRecord> views = viewRecordMapper.selectList(Wrappers.emptyWrapper());
         List<Favorite> favorites = favoriteMapper.selectList(Wrappers.emptyWrapper());
         List<Comment> comments = commentMapper.selectList(Wrappers.emptyWrapper());
 
-        // 2. 构建用户行为兴趣度矩阵：userId -> (spotId -> score)
-        Map<Long, Map<Long, Double>> userBehavior = buildUserBehaviorMatrix(favorites, comments);
+        // 2) 构建用户-景点兴趣矩阵
+        Map<Long, Map<Long, Double>> userBehavior = buildUserBehaviorMatrix(views, favorites, comments);
 
-        // 3. 如果目标用户在行为矩阵中不存在或没有任何行为，触发冷启动策略
+        // 3) 冷启动：用户无行为时使用站内行为综合热度兜底
         Map<Long, Double> targetVector = userBehavior.get(userId);
         if (targetVector == null || targetVector.isEmpty()) {
-            // 此时没有可用于排除的已看景点，直接传入 null
-            return queryHotSpots(10, null);
+            return queryColdStartSpots(topN, null, views, favorites, comments);
         }
 
-        // 4. 调用协同过滤推荐工具类，获取推荐景点 ID 列表
-        List<Long> recommendSpotIds = RecommendUtils.recommendForUser(userId, userBehavior, topN);
-
-        // 5. 若协同过滤结果为空（例如没有相似用户），也降级为热门推荐
-        if (recommendSpotIds == null || recommendSpotIds.isEmpty()) {
-            // 协同过滤无结果时，排除当前用户已有行为的景点，避免推荐“看过/评过/收藏过”的内容
-            return queryHotSpots(10, targetVector.keySet());
+        // 4) CF 产出候选 Top20，再做多样性重排
+        List<Long> candidateSpotIds = RecommendUtils.recommendForUser(userId, userBehavior, CANDIDATE_SIZE);
+        if (candidateSpotIds == null || candidateSpotIds.isEmpty()) {
+            List<Spot> fallbackCandidates = queryColdStartSpots(CANDIDATE_SIZE, targetVector.keySet(), views, favorites, comments);
+            return diversifyByTagQuota(fallbackCandidates, topN);
         }
 
-        // 6. 根据推荐的景点 ID 查询 t_spot 表，保持推荐顺序
-        return fetchSpotsByIdsPreserveOrder(recommendSpotIds);
+        List<Spot> candidates = fetchSpotsByIdsPreserveOrder(candidateSpotIds);
+        if (candidates.isEmpty()) {
+            List<Spot> fallbackCandidates = queryColdStartSpots(CANDIDATE_SIZE, targetVector.keySet(), views, favorites, comments);
+            return diversifyByTagQuota(fallbackCandidates, topN);
+        }
+
+        return diversifyByTagQuota(candidates, topN);
+    }
+
+    @Override
+    public RecommendPageVO recommendPageForUser(Long userId, int topN) {
+        RecommendPageVO pageVO = new RecommendPageVO();
+        if (userId == null || topN <= 0) {
+            pageVO.setProfile(buildEmptyProfile());
+            return pageVO;
+        }
+
+        List<ViewRecord> views = viewRecordMapper.selectList(Wrappers.emptyWrapper());
+        List<Favorite> favorites = favoriteMapper.selectList(Wrappers.emptyWrapper());
+        List<Comment> comments = commentMapper.selectList(Wrappers.emptyWrapper());
+        List<Spot> spots = spotMapper.selectList(Wrappers.emptyWrapper());
+        Map<Long, Spot> spotMap = buildSpotMap(spots);
+        Map<Long, Map<Long, Double>> userBehavior = buildUserBehaviorMatrix(views, favorites, comments);
+        Map<Long, Double> targetVector = userBehavior.get(userId);
+        InterestProfileVO profile = buildInterestProfile(userId, views, favorites, comments, spotMap);
+        pageVO.setProfile(profile);
+
+        List<Spot> recommendSpots;
+        boolean coldStart = targetVector == null || targetVector.isEmpty();
+        if (coldStart) {
+            recommendSpots = queryColdStartSpots(topN, null, views, favorites, comments);
+        } else {
+            List<Long> candidateSpotIds = RecommendUtils.recommendForUser(userId, userBehavior, CANDIDATE_SIZE);
+            List<Spot> candidates = fetchSpotsByIdsPreserveOrder(candidateSpotIds);
+            if (candidates.isEmpty()) {
+                candidates = queryColdStartSpots(CANDIDATE_SIZE, targetVector.keySet(), views, favorites, comments);
+            }
+            recommendSpots = diversifyByTagQuota(candidates, topN);
+        }
+
+        List<SpotRecommendVO> recommendations = new ArrayList<>();
+        for (Spot spot : recommendSpots) {
+            SpotRecommendVO vo = new SpotRecommendVO();
+            vo.setSpot(spot);
+            vo.setReason(buildRecommendReason(spot, profile, coldStart));
+            recommendations.add(vo);
+        }
+        pageVO.setRecommendations(recommendations);
+        return pageVO;
     }
 
     /**
-     * 构建用户行为兴趣度矩阵。
+     * 构建用户行为兴趣矩阵。
      *
-     * <p>遍历收藏表和评论表，按用户和景点两级维度累计兴趣度分值：</p>
+     * <p>算法推导公式：</p>
+     * <pre>
+     * decay(days) = exp(-0.05 * days)
+     * score_behavior = weight_behavior * value * decay(days)
+     * score_total(u,s) = Σ score_behavior
+     * </pre>
      * <ul>
-     *     <li>如果某用户收藏了某个景点，则在对应 Score 上加上 W_fav（即 +3 分）；</li>
-     *     <li>如果某用户对某个景点评分 star（1-5），则在对应 Score 上加上 W_rate * star（即 +star 分）；</li>
-     *     <li>同一用户对同一景点既收藏又评分时，两部分得分会累加。</li>
+     *     <li>浏览：value=1，表示弱偏好；</li>
+     *     <li>收藏：value=1，表示强偏好；</li>
+     *     <li>评分：value=star（1~5），表示显式喜好强度。</li>
      * </ul>
      *
+     * <p>设计意图：用时间衰减保证“近期行为更重要”，使推荐能随用户兴趣变化而动态调整。</p>
+     *
+     * @param views     浏览记录列表
      * @param favorites 收藏记录列表
      * @param comments  评论记录列表
      * @return 用户行为兴趣度矩阵 userId -> (spotId -> score)
      */
-    private Map<Long, Map<Long, Double>> buildUserBehaviorMatrix(List<Favorite> favorites,
+    private Map<Long, Map<Long, Double>> buildUserBehaviorMatrix(List<ViewRecord> views,
+                                                                 List<Favorite> favorites,
                                                                  List<Comment> comments) {
         Map<Long, Map<Long, Double>> behavior = new HashMap<>();
+        LocalDateTime now = LocalDateTime.now();
 
-        // 2.1 处理收藏行为：Is_fav = 1 => + W_fav
-        for (Favorite fav : favorites) {
-            Long userId = fav.getUserId();
-            Long spotId = fav.getSpotId();
-            if (userId == null || spotId == null) {
+        // 1) 浏览行为（隐式反馈）
+        for (ViewRecord view : views) {
+            Long uid = view.getUserId();
+            Long sid = view.getSpotId();
+            if (uid == null || sid == null) {
                 continue;
             }
-            Map<Long, Double> spotScoreMap = behavior.computeIfAbsent(userId, k -> new HashMap<>());
-            spotScoreMap.merge(spotId, W_FAV, Double::sum);
+            double decay = decayByTime(view.getCreateTime(), now);
+            mergeBehaviorScore(behavior, uid, sid, W_VIEW * decay);
         }
 
-        // 2.2 处理评分行为：Rating = star => + W_rate * star
-        for (Comment comment : comments) {
-            Long userId = comment.getUserId();
-            Long spotId = comment.getSpotId();
-            Integer star = comment.getStar();
-            if (userId == null || spotId == null || star == null) {
+        // 2) 收藏行为（显式强偏好）
+        for (Favorite fav : favorites) {
+            Long uid = fav.getUserId();
+            Long sid = fav.getSpotId();
+            if (uid == null || sid == null) {
                 continue;
             }
-            double scoreIncrement = W_RATE * star;
-            Map<Long, Double> spotScoreMap = behavior.computeIfAbsent(userId, k -> new HashMap<>());
-            spotScoreMap.merge(spotId, scoreIncrement, Double::sum);
+            double decay = decayByTime(fav.getCreateTime(), now);
+            mergeBehaviorScore(behavior, uid, sid, W_FAV * decay);
+        }
+
+        // 3) 评分行为（显式偏好强度）
+        for (Comment comment : comments) {
+            Long uid = comment.getUserId();
+            Long sid = comment.getSpotId();
+            Integer star = comment.getStar();
+            if (uid == null || sid == null || star == null) {
+                continue;
+            }
+            double decay = decayByTime(comment.getCreateTime(), now);
+            double scoreIncrement = W_RATE * star * decay;
+            mergeBehaviorScore(behavior, uid, sid, scoreIncrement);
         }
 
         return behavior;
     }
 
     /**
-     * 查询“热门景点”：按 view_count 降序排列，取 Top N。
+     * 查询冷启动候选：综合站内浏览、收藏、评论与评分，并保留标签多样性。
      *
-     * <p>该方法用于冷启动场景（用户无行为数据）或协同过滤结果为空时的兜底推荐，
-     * 对应 PRD 3.2 中的“热门景点推荐”。</p>
-     *
-     * @param topN          需要返回的景点数量
+     * @param topN           需要返回的景点数量
      * @param excludeSpotIds 需要排除的景点 ID 集合（可为 null 或空）
-     * @return 热门景点列表
+     * @param views          浏览记录列表
+     * @param favorites      收藏记录列表
+     * @param comments       评论记录列表
+     * @return 冷启动景点列表
      */
-    private List<Spot> queryHotSpots(int topN, java.util.Set<Long> excludeSpotIds) {
-        LambdaQueryWrapper<Spot> wrapper = new LambdaQueryWrapper<Spot>()
-                .orderByDesc(Spot::getViewCount)
-                .last("LIMIT " + topN);
-        if (excludeSpotIds != null && !excludeSpotIds.isEmpty()) {
-            wrapper.notIn(Spot::getId, excludeSpotIds);
+    private List<Spot> queryColdStartSpots(int topN,
+                                           Set<Long> excludeSpotIds,
+                                           List<ViewRecord> views,
+                                           List<Favorite> favorites,
+                                           List<Comment> comments) {
+        if (topN <= 0) {
+            return Collections.emptyList();
         }
-        return spotMapper.selectList(wrapper);
+
+        List<Spot> spots = spotMapper.selectList(Wrappers.emptyWrapper());
+        Map<Long, Double> popularityScore = new HashMap<>();
+        Map<Long, Integer> commentCount = new HashMap<>();
+        Map<Long, Integer> starSum = new HashMap<>();
+
+        for (ViewRecord view : views) {
+            Long sid = view.getSpotId();
+            if (sid != null) {
+                popularityScore.merge(sid, W_VIEW, Double::sum);
+            }
+        }
+        for (Favorite favorite : favorites) {
+            Long sid = favorite.getSpotId();
+            if (sid != null) {
+                popularityScore.merge(sid, W_FAV, Double::sum);
+            }
+        }
+        for (Comment comment : comments) {
+            Long sid = comment.getSpotId();
+            Integer star = comment.getStar();
+            if (sid != null) {
+                popularityScore.merge(sid, W_RATE, Double::sum);
+                commentCount.merge(sid, 1, Integer::sum);
+                if (star != null) {
+                    starSum.merge(sid, star, Integer::sum);
+                }
+            }
+        }
+        for (Map.Entry<Long, Integer> entry : commentCount.entrySet()) {
+            Long sid = entry.getKey();
+            Integer count = entry.getValue();
+            Integer sum = starSum.get(sid);
+            if (count != null && count > 0 && sum != null) {
+                popularityScore.merge(sid, (sum * 1.0 / count) * W_RATE, Double::sum);
+            }
+        }
+
+        List<Spot> candidates = new ArrayList<>();
+        for (Spot spot : spots) {
+            if (spot == null || spot.getId() == null) {
+                continue;
+            }
+            if (excludeSpotIds != null && excludeSpotIds.contains(spot.getId())) {
+                continue;
+            }
+            candidates.add(spot);
+        }
+
+        candidates.sort((a, b) -> {
+            double scoreA = popularityScore.getOrDefault(a.getId(), 0.0);
+            double scoreB = popularityScore.getOrDefault(b.getId(), 0.0);
+            int scoreCompare = Double.compare(scoreB, scoreA);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+            int viewCompare = Integer.compare(
+                    b.getViewCount() == null ? 0 : b.getViewCount(),
+                    a.getViewCount() == null ? 0 : a.getViewCount());
+            if (viewCompare != 0) {
+                return viewCompare;
+            }
+            return Long.compare(b.getId(), a.getId());
+        });
+
+        return diversifyByTagQuota(candidates, topN);
     }
 
     /**
@@ -180,6 +335,267 @@ public class RecommendServiceImpl implements RecommendService {
             }
         }
         return ordered;
+    }
+
+    /**
+     * 时间衰减函数：decay(days)=exp(-lambda*days)。
+     */
+    private double decayByTime(LocalDateTime behaviorTime, LocalDateTime now) {
+        if (behaviorTime == null) {
+            return 1.0;
+        }
+        long days = Math.max(0, ChronoUnit.DAYS.between(behaviorTime.toLocalDate(), now.toLocalDate()));
+        return Math.exp(-LAMBDA * days);
+    }
+
+    /**
+     * 累加用户行为得分。
+     */
+    private void mergeBehaviorScore(Map<Long, Map<Long, Double>> behavior,
+                                    Long userId,
+                                    Long spotId,
+                                    double increment) {
+        Map<Long, Double> spotScoreMap = behavior.computeIfAbsent(userId, k -> new HashMap<>());
+        spotScoreMap.merge(spotId, increment, Double::sum);
+    }
+
+    /**
+     * MMR 工程化近似：使用“标签配额”抑制过度同质化。
+     *
+     * <p>设计意图：经典 MMR 目标是平衡相关性与多样性：
+     * score = lambda * rel - (1-lambda) * sim。
+     * 在景区业务中，标签是天然内容语义，因此用“同标签最多 2 个”的约束近似 sim 惩罚，
+     * 能以较低复杂度获得可解释、可控的多样化结果。</p>
+     */
+    private List<Spot> diversifyByTagQuota(List<Spot> candidates, int topN) {
+        if (candidates == null || candidates.isEmpty() || topN <= 0) {
+            return Collections.emptyList();
+        }
+        List<Spot> result = new ArrayList<>();
+        Map<String, Integer> tagCount = new HashMap<>();
+
+        // 第一轮：执行标签配额约束
+        for (Spot spot : candidates) {
+            if (spot == null) {
+                continue;
+            }
+            String primaryTag = primaryTag(spot.getTags());
+            int count = tagCount.getOrDefault(primaryTag, 0);
+            if (count >= TAG_QUOTA_PER_LABEL) {
+                continue;
+            }
+            result.add(spot);
+            tagCount.put(primaryTag, count + 1);
+            if (result.size() >= topN) {
+                return result;
+            }
+        }
+
+        // 第二轮：若配额导致不足 topN，按候选顺序补齐
+        for (Spot spot : candidates) {
+            if (spot == null || result.size() >= topN) {
+                continue;
+            }
+            if (!containsSpot(result, spot.getId())) {
+                result.add(spot);
+            }
+        }
+        return result;
+    }
+
+    private Map<Long, Spot> buildSpotMap(List<Spot> spots) {
+        Map<Long, Spot> spotMap = new HashMap<>();
+        if (spots == null) {
+            return spotMap;
+        }
+        for (Spot spot : spots) {
+            if (spot != null && spot.getId() != null) {
+                spotMap.put(spot.getId(), spot);
+            }
+        }
+        return spotMap;
+    }
+
+    private InterestProfileVO buildEmptyProfile() {
+        InterestProfileVO profile = new InterestProfileVO();
+        profile.setSummary("暂无足够行为，先为你展示热门推荐");
+        return profile;
+    }
+
+    private InterestProfileVO buildInterestProfile(Long userId,
+                                                   List<ViewRecord> views,
+                                                   List<Favorite> favorites,
+                                                   List<Comment> comments,
+                                                   Map<Long, Spot> spotMap) {
+        InterestProfileVO profile = new InterestProfileVO();
+        Map<String, Double> tagWeightMap = new HashMap<>();
+        int viewCount = 0;
+        int favoriteCount = 0;
+        int commentCount = 0;
+        int starSum = 0;
+
+        for (ViewRecord view : views) {
+            if (view == null || !userId.equals(view.getUserId())) {
+                continue;
+            }
+            viewCount++;
+            addSpotTagWeights(tagWeightMap, spotMap.get(view.getSpotId()), W_VIEW);
+        }
+        for (Favorite favorite : favorites) {
+            if (favorite == null || !userId.equals(favorite.getUserId())) {
+                continue;
+            }
+            favoriteCount++;
+            addSpotTagWeights(tagWeightMap, spotMap.get(favorite.getSpotId()), W_FAV);
+        }
+        for (Comment comment : comments) {
+            if (comment == null || !userId.equals(comment.getUserId())) {
+                continue;
+            }
+            commentCount++;
+            Integer star = comment.getStar();
+            if (star != null) {
+                starSum += star;
+                addSpotTagWeights(tagWeightMap, spotMap.get(comment.getSpotId()), W_RATE * star);
+            }
+        }
+
+        profile.setViewCount(viewCount);
+        profile.setFavoriteCount(favoriteCount);
+        profile.setCommentCount(commentCount);
+        if (commentCount > 0) {
+            profile.setAverageRating(Math.round((starSum * 10.0 / commentCount)) / 10.0);
+        }
+        List<TagWeightVO> tagWeights = buildTagWeightList(tagWeightMap);
+        profile.setTagWeights(tagWeights);
+        profile.setTopTags(buildTopTags(tagWeights));
+        profile.setSummary(buildProfileSummary(profile));
+        return profile;
+    }
+
+    private void addSpotTagWeights(Map<String, Double> tagWeightMap, Spot spot, double increment) {
+        if (spot == null || increment <= 0) {
+            return;
+        }
+        List<String> tags = parseTags(spot.getTags());
+        if (tags.isEmpty()) {
+            return;
+        }
+        double perTagIncrement = increment / tags.size();
+        for (String tag : tags) {
+            tagWeightMap.merge(tag, perTagIncrement, Double::sum);
+        }
+    }
+
+    private List<TagWeightVO> buildTagWeightList(Map<String, Double> tagWeightMap) {
+        List<TagWeightVO> list = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : tagWeightMap.entrySet()) {
+            TagWeightVO vo = new TagWeightVO();
+            vo.setTag(entry.getKey());
+            vo.setWeight(Math.round(entry.getValue() * 10.0) / 10.0);
+            list.add(vo);
+        }
+        list.sort((a, b) -> Double.compare(b.getWeight(), a.getWeight()));
+        if (list.size() > 6) {
+            return new ArrayList<>(list.subList(0, 6));
+        }
+        return list;
+    }
+
+    private List<String> buildTopTags(List<TagWeightVO> tagWeights) {
+        List<String> topTags = new ArrayList<>();
+        for (TagWeightVO tagWeight : tagWeights) {
+            if (tagWeight.getTag() != null) {
+                topTags.add(tagWeight.getTag());
+            }
+            if (topTags.size() >= 3) {
+                break;
+            }
+        }
+        return topTags;
+    }
+
+    private String buildProfileSummary(InterestProfileVO profile) {
+        int totalBehavior = profile.getViewCount() + profile.getFavoriteCount() + profile.getCommentCount();
+        if (totalBehavior == 0 || profile.getTopTags().isEmpty()) {
+            return "暂无足够行为，先为你展示热门推荐";
+        }
+        return "你近期更关注“" + String.join("、", profile.getTopTags()) + "”类景点，系统会优先推荐相似景点。";
+    }
+
+    private String buildRecommendReason(Spot spot, InterestProfileVO profile, boolean coldStart) {
+        if (spot == null) {
+            return "根据站内综合热度为你推荐";
+        }
+        List<String> matchedTags = matchTags(spot, profile == null ? Collections.emptyList() : profile.getTopTags());
+        if (!matchedTags.isEmpty()) {
+            return "匹配你偏好的“" + String.join("、", matchedTags) + "”标签";
+        }
+        if (spot.getScore() != null && spot.getScore() >= 4.5) {
+            return "游客评分较高，适合优先体验";
+        }
+        if (spot.getViewCount() != null && spot.getViewCount() >= 1000) {
+            return "站内浏览热度较高，很多游客正在关注";
+        }
+        return coldStart ? "根据站内综合热度为你推荐" : "相似兴趣用户也关注过这个景点";
+    }
+
+    private List<String> matchTags(Spot spot, List<String> topTags) {
+        List<String> result = new ArrayList<>();
+        if (spot == null || topTags == null || topTags.isEmpty()) {
+            return result;
+        }
+        List<String> spotTags = parseTags(spot.getTags());
+        for (String topTag : topTags) {
+            if (spotTags.contains(topTag)) {
+                result.add(topTag);
+            }
+            if (result.size() >= 2) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private List<String> parseTags(String tags) {
+        List<String> result = new ArrayList<>();
+        if (tags == null || tags.trim().isEmpty()) {
+            return result;
+        }
+        String[] arr = tags.split(",");
+        for (String tag : arr) {
+            String t = tag == null ? "" : tag.trim();
+            if (!t.isEmpty()) {
+                result.add(t);
+            }
+        }
+        return result;
+    }
+
+    private String primaryTag(String tags) {
+        if (tags == null || tags.trim().isEmpty()) {
+            return "unknown";
+        }
+        String[] arr = tags.split(",");
+        for (String tag : arr) {
+            String t = tag == null ? "" : tag.trim();
+            if (!t.isEmpty()) {
+                return t;
+            }
+        }
+        return "unknown";
+    }
+
+    private boolean containsSpot(List<Spot> spots, Long spotId) {
+        if (spotId == null) {
+            return false;
+        }
+        for (Spot s : spots) {
+            if (s != null && spotId.equals(s.getId())) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 

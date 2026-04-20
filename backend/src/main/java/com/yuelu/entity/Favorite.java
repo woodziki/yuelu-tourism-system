@@ -1,14 +1,17 @@
 package com.yuelu.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 /**
  * 收藏表实体：t_favorite
  *
- * <p>严格对应 PRD 5.5：id/user_id/spot_id。</p>
+ * <p>严格对应 PRD 5.5：id/user_id/spot_id/create_time。</p>
  */
 @Data
 @TableName("t_favorite")
@@ -29,5 +32,11 @@ public class Favorite {
      * 景点 ID。
      */
     private Long spotId;
+
+    /**
+     * 收藏创建时间。
+     */
+    @TableField("create_time")
+    private LocalDateTime createTime;
 }
 

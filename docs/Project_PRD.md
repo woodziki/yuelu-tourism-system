@@ -1,10 +1,10 @@
 # 产品需求文档 (PRD) - 岳麓山智慧旅游推荐系统
 
-**版本**: 1.0 (Final Graduation Version)
+**版本**: 2.0 (Implemented)
 
 **项目角色**: 计算机专业毕业设计
 
-**状态**: 待开发
+**状态**: 已实现并持续迭代
 
 ## 1\. 项目概述 (Project Overview)
 
@@ -14,15 +14,15 @@
 
 ### 1.2 核心目标
 
-**个性化推荐**: 基于协同过滤算法 (User-based CF)，根据用户行为（点击、收藏、评分）推荐景点。
+**个性化推荐**: 基于 User-based CF + 行为融合（浏览、收藏、评分）+ 时间衰减 + 多样性重排，实现可解释推荐。
 
 **智能线路匹配**: 基于用户对景点的喜好，智能排序管理员预设的静态游玩线路。
 
-**极简运维**: 采用“模拟数据注入”策略，规避爬虫风险，确保演示时算法效果可控。
+**极简运维**: 采用“本地可复现数据 + SQL 初始化脚本 + 统一配置化鉴权”策略，保证演示稳定。
 
 ### 1.3 技术栈 (Tech Stack)
 
-**Backend**: Java 18 (User only has JDK 18), Spring Boot 2.7+, MyBatis-Plus, MySQL 8.0.
+**Backend**: Java 18, Spring Boot 2.7+, MyBatis-Plus, MySQL 8.0, JWT, BCrypt, RestTemplate.
 
 **前端**: Vue 2, Element UI, Axios.  
 
@@ -52,9 +52,9 @@
 
 **注册**: 用户名、密码、昵称。注册成功后跳转登录。
 
-**登录**: 基于 Session 或简单的 Token 验证。
+**登录**: 基于 JWT Token（Authorization: Bearer <token>）。
 
-**鉴权**: 只有登录用户才能调用 /api/favorite/\* 和 /api/comment/\* 接口。
+**鉴权**: 通过 JwtInterceptor 统一鉴权；白名单开放登录/注册与部分公开查询接口。
 
 ### 3.2 首页推荐模块 (Core Feature)
 
@@ -80,7 +80,7 @@ _标题_: “猜您喜欢 (基于您的兴趣)”。
 
 **信息展示**: 封面图、名称、简介、标签 (tags)、价格、建议游玩时长。
 
-**隐式反馈 (Implicit)**: 用户进入详情页时，后台记录一次“浏览”行为 (View)。
+**隐式反馈 (Implicit)**: 用户进入详情页时，登录态静默写入一次浏览行为 (t_view_record)。
 
 **显式反馈 (Explicit)**:
 
@@ -108,15 +108,16 @@ _标题_: “猜您喜欢 (基于您的兴趣)”。
 
 ### 3.5 后台管理模块 (Admin Dashboard)
 
-**数据看板**: 展示 4 个数字卡片（用户总数、景点总数、总浏览量、今日新增评分）。
+**后台管理已实现**:
 
-_图表_: 使用 ECharts 展示“近7日访问趋势”（数据可前端写死数组模拟）。
-
-**内容录入**: 支持上传图片（存本地静态目录或图床），支持多选关联线路的景点。
+- 景点管理：分页、检索、新增、编辑、删除；
+- 线路管理：分页、检索、新增、编辑、删除，并支持动态关联景点顺序；
+- 评论管理：分页、检索、删除；
+- 用户管理：分页、检索、状态管理（封禁/解封）、编辑昵称。
 
 ## 4\. 算法逻辑规范 (Algorithm Specification)
 
-### 4.1 协同过滤 (User-Based CF)
+### 4.1 协同过滤与融合排序 (User-Based CF + Fusion)
 
 **类名**: RecommendUtils.java
 
@@ -124,23 +125,25 @@ _图表_: 使用 ECharts 展示“近7日访问趋势”（数据可前端写死
 
 **兴趣度公式**:
 
-$$Score = (W_{view} \times Count_{view}) + (W_{fav} \times Is_{fav}) + (W_{rate} \times Rating)$$
+$$Score = \sum_{behavior} (W_{behavior} \times Value_{behavior} \times e^{-0.05 \times days})$$
 
 $W_{view} = 1$ (浏览)
 
 $W_{fav} = 3$ (收藏)
 
-$W_{rate} = 1$ (评分，取值 1-5)
+$W_{rate} = 2$ (评分，取值 1-5)
+
+并在 CF 候选 Top20 上执行标签配额打散（同标签最多 2 个），降低推荐同质化。
 
 **相似度公式**: 余弦相似度 (Cosine Similarity)。
 
 **输出**: 推荐度最高的 Top N 景点 ID 列表。
 
-### 4.2 模拟数据策略 (Data Injection)
+### 4.2 数据策略 (Data Strategy)
 
 **严禁爬虫**: 不开发任何动态爬虫功能。
 
-**SQL注入**: 提供 data_mock.sql 脚本。
+**SQL初始化**: 提供 `docs/schema.sql` 作为完整初始化脚本。
 
 预置 5 个机器人账号。
 
@@ -148,7 +151,7 @@ $W_{rate} = 1$ (评分，取值 1-5)
 
 目的：确保算法能计算出高相似度，从而产出推荐结果。
 
-## 5\. 数据库设计 (Database Schema)
+## 5\. 数据库设计 (Database Schema - Implemented)
 
 _请严格遵守以下表结构，禁止随意修改字段名。_
 
@@ -160,6 +163,7 @@ _请严格遵守以下表结构，禁止随意修改字段名。_
 | username | VARCHAR(50) | Unique |
 | password | VARCHAR(100) |     |
 | nickname | VARCHAR(50) |     |
+| status | INT | 0正常,1封禁 |
 | create_time | DATETIME |     |
 
 ### 5.2 景点表 (t_spot)
@@ -195,11 +199,13 @@ _请严格遵守以下表结构，禁止随意修改字段名。_
 | spot_id | BIGINT | FK  |
 | sort | INT | 游玩顺序 (1, 2, 3...) |
 
-### 5.5 行为表 (t_comment, t_favorite)
+### 5.5 行为表 (t_comment, t_favorite, t_view_record)
 
 t_comment: id, user_id, spot_id, content, star (INT 1-5).
 
-t_favorite: id, user_id, spot_id.
+t_favorite: id, user_id, spot_id, create_time.
+
+t_view_record: id, user_id, spot_id, create_time.
 
 ## 6\. 非功能性需求 (Constraints)
 
@@ -208,3 +214,30 @@ t_favorite: id, user_id, spot_id.
 **异常处理**: 必须有全局异常处理器 (GlobalExceptionHandler)，前后端交互统一使用 Result<T> 包装类。
 
 **文档化**: 根目录下必须维护 README.md，记录 API 接口、部署步骤和待办事项。
+
+## 7\. 当前实现清单 (As-Is)
+
+### 7.1 已实现核心接口
+
+- 用户认证：`/user/register`、`/user/login`
+- 推荐接口：`/spot/recommend`
+- 线路智能匹配：`/route/list`（含 `matchScore`）
+- 后台景点管理：`/spot/adminList`、`/spot/add`、`/spot/update`、`/spot/delete/{id}`
+- 后台线路管理：`/route/adminList`、`/route/add`、`/route/update`、`/route/delete/{id}`
+- 后台评论管理：`/comment/adminList`、`/comment/delete/{id}`
+- 后台用户管理：`/user/adminList`、`/user/updateStatus`、`/user/updateUser`
+- AI 导游接口：`/ai/chat`（火山引擎 Bot 应用 API，RestTemplate 调用）
+
+### 7.2 AI 智能导游现状
+
+- 后端调用方式：Spring Boot 2.x 原生 `RestTemplate`
+- 当前地址：`https://ark.cn-beijing.volces.com/api/v3/bots/chat/completions`
+- 鉴权方式：`Authorization: Bearer <ai.api-key>`
+- 模型字段：使用云端 Bot 应用 ID（`ai.model`）
+- 交互策略：Java 端仅透传 `user` 消息，System Prompt 与工具能力由云端 Bot 配置托管
+
+### 7.3 风险与后续优化
+
+- 推荐算法目前以内存构建行为矩阵为主，数据规模扩张后需引入离线特征计算；
+- AI 接口当前为非流式，后续可升级 SSE/流式输出；
+- 可补充管理后台统计看板与自动化测试覆盖。

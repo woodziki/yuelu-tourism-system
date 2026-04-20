@@ -28,6 +28,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/spot/**",
                         "/route/**",
                         "/comment/list",
+                        "/ai/chat",
                         "/error"
                 );
     }
